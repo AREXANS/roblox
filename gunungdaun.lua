@@ -4,13 +4,16 @@ local char = player.Character or player.CharacterAdded:Wait()
 local hum = char:WaitForChild("Humanoid")
 local uis = game:GetService("UserInputService")
 local tweenService = game:GetService("TweenService")
+local runService = game:GetService("RunService")
 
 -- Variabel kontrol
 local isHidden = true
 local isFlying = false
-local flySpeed = 50 -- Atur kecepatan terbang di sini
-local originalWalkspeed = hum.WalkSpeed -- Simpan kecepatan lari asli
+local originalWalkspeed = hum.WalkSpeed
+local flySpeed = 50 
+local runSpeed = 100
 local flyConnection = nil
+local lastFlyInput = nil
 
 -- GUI
 local screenGui = Instance.new("ScreenGui", game:GetService("CoreGui"))
@@ -29,8 +32,8 @@ Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 8)
 
 -- Frame utama GUI, awalnya tersembunyi
 local frame = Instance.new("Frame", screenGui)
-frame.Size = UDim2.new(0,250,0,120)
-frame.Position = UDim2.new(0,20,0.5,-60)
+frame.Size = UDim2.new(0,250,0,180)
+frame.Position = UDim2.new(0,20,0.5,-90)
 frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
 frame.Visible = false
 Instance.new("UICorner", frame).CornerRadius = UDim.new(0,12)
@@ -45,7 +48,7 @@ title.TextColor3 = Color3.new(1,1,1)
 title.Font = Enum.Font.SourceSansBold
 title.TextSize = 18
 
--- Tombol Minimize
+-- Tombol minimize
 local minBtn = Instance.new("TextButton", frame)
 minBtn.Size = UDim2.new(0,30,0,25)
 minBtn.Position = UDim2.new(1,-30,0,0)
@@ -69,43 +72,127 @@ local function createToggle(text, posY, callback)
     return btn
 end
 
--- Tombol Kecepatan Lari
-createToggle("Toggle Speed", 40, function()
-    if hum.WalkSpeed == originalWalkspeed then
-        hum.WalkSpeed = 100 -- Atur kecepatan lari yang diinginkan di sini
-    else
-        hum.WalkSpeed = originalWalkspeed
+-- Label kecepatan
+local speedLabel = Instance.new("TextLabel", frame)
+speedLabel.Size = UDim2.new(1,-40,0,20)
+speedLabel.Position = UDim2.new(0,20,0,30)
+speedLabel.BackgroundTransparency = 1
+speedLabel.Text = "Walkspeed: "..runSpeed
+speedLabel.TextColor3 = Color3.new(1,1,1)
+speedLabel.Font = Enum.Font.SourceSans
+speedLabel.TextSize = 16
+
+-- Slider kecepatan
+local speedSlider = Instance.new("Frame", frame)
+speedSlider.Size = UDim2.new(1,-40,0,20)
+speedSlider.Position = UDim2.new(0,20,0,50)
+speedSlider.BackgroundColor3 = Color3.fromRGB(40,40,40)
+Instance.new("UICorner", speedSlider).CornerRadius = UDim.new(0,8)
+
+local speedSliderBar = Instance.new("Frame", speedSlider)
+speedSliderBar.Size = UDim2.new(0.5,0,1,0)
+speedSliderBar.Position = UDim2.new(0,0,0,0)
+speedSliderBar.BackgroundColor3 = Color3.fromRGB(0,150,255)
+Instance.new("UICorner", speedSliderBar).CornerRadius = UDim.new(0,8)
+
+local speedSliderHandle = Instance.new("TextButton", speedSlider)
+speedSliderHandle.Size = UDim2.new(0,20,1,0)
+speedSliderHandle.Position = UDim2.new(0.5, -10, 0,0)
+speedSliderHandle.BackgroundColor3 = Color3.new(1,1,1)
+speedSliderHandle.Text = ""
+Instance.new("UICorner", speedSliderHandle).CornerRadius = UDim.new(0,8)
+
+-- Fungsi slider
+local draggingSlider = false
+local function updateSpeed(input)
+    local x = input.Position.X - speedSlider.AbsolutePosition.X
+    local percent = math.clamp(x / speedSlider.AbsoluteSize.X, 0, 1)
+    runSpeed = 10 + percent * 400 -- Kecepatan dari 10 sampai 410
+    speedSliderHandle.Position = UDim2.new(percent, -10, 0, 0)
+    speedSliderBar.Size = UDim2.new(percent,0,1,0)
+    speedLabel.Text = "Walkspeed: "..math.floor(runSpeed)
+    if hum.WalkSpeed ~= originalWalkspeed then
+        hum.WalkSpeed = runSpeed
+    end
+end
+speedSliderHandle.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        draggingSlider = true
+    end
+end)
+uis.InputChanged:Connect(function(input)
+    if draggingSlider and input.UserInputType == Enum.UserInputType.MouseMovement then
+        updateSpeed(input)
+    end
+end)
+uis.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        draggingSlider = false
     end
 end)
 
--- Fungsi untuk terbang
-local function toggleFly()
+-- Tombol toggle kecepatan
+local speedBtn = createToggle("Toggle Speed", 80, function()
+    if hum.WalkSpeed == originalWalkspeed then
+        task.wait(0.1) -- Jeda kecil
+        hum.WalkSpeed = runSpeed
+        speedBtn.BackgroundColor3 = Color3.fromRGB(0,200,0)
+    else
+        task.wait(0.1) -- Jeda kecil
+        hum.WalkSpeed = originalWalkspeed
+        speedBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+    end
+end)
+
+-- Tombol toggle terbang
+local flyBtn = createToggle("Toggle Fly", 120, function()
     if not isFlying then
         isFlying = true
-        hum.WalkSpeed = flySpeed
+        flyBtn.BackgroundColor3 = Color3.fromRGB(0,200,0)
+        
+        -- Menonaktifkan Humanoid standar
+        hum.WalkSpeed = 0
         hum.JumpPower = 0
-        hum:ChangeState(Enum.HumanoidStateType.Flying)
-        flyConnection = uis.InputBegan:Connect(function(input)
-            if input.KeyCode == Enum.KeyCode.W or input.KeyCode == Enum.KeyCode.A or input.KeyCode == Enum.KeyCode.S or input.KeyCode == Enum.KeyCode.D then
-                char.PrimaryPart.CFrame = char.PrimaryPart.CFrame + char.PrimaryPart.CFrame.lookVector * flySpeed * 0.1
+        hum.Jump = false
+        hum:ChangeState(Enum.HumanoidStateType.Physics)
+
+        -- Mengganti kontrol karakter dengan skrip
+        flyConnection = runService.Heartbeat:Connect(function()
+            local hrp = char:WaitForChild("HumanoidRootPart")
+            if uis:IsKeyDown(Enum.KeyCode.W) then
+                hrp.CFrame = hrp.CFrame + hrp.CFrame.lookVector * flySpeed * runService.Heartbeat:GetDt()
+            end
+            if uis:IsKeyDown(Enum.KeyCode.S) then
+                hrp.CFrame = hrp.CFrame - hrp.CFrame.lookVector * flySpeed * runService.Heartbeat:GetDt()
+            end
+            if uis:IsKeyDown(Enum.KeyCode.A) then
+                hrp.CFrame = hrp.CFrame - hrp.CFrame.rightVector * flySpeed * runService.Heartbeat:GetDt()
+            end
+            if uis:IsKeyDown(Enum.KeyCode.D) then
+                hrp.CFrame = hrp.CFrame + hrp.CFrame.rightVector * flySpeed * runService.Heartbeat:GetDt()
+            end
+            if uis:IsKeyDown(Enum.KeyCode.Space) then
+                hrp.CFrame = hrp.CFrame + Vector3.new(0, flySpeed * runService.Heartbeat:GetDt(), 0)
+            end
+            if uis:IsKeyDown(Enum.KeyCode.LeftShift) then
+                hrp.CFrame = hrp.CFrame - Vector3.new(0, flySpeed * runService.Heartbeat:GetDt(), 0)
             end
         end)
     else
         isFlying = false
+        flyBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+        
+        -- Mengaktifkan kembali Humanoid standar
         hum.WalkSpeed = originalWalkspeed
-        hum.JumpPower = 50 -- Atur ulang kekuatan lompat asli
+        hum.JumpPower = 50
         hum:ChangeState(Enum.HumanoidStateType.Jumping)
         if flyConnection then
             flyConnection:Disconnect()
             flyConnection = nil
         end
     end
-end
-
--- Tombol Terbang
-createToggle("Toggle Fly", 80, function()
-    toggleFly()
 end)
+
 
 -- LOGIKA UNTUK MENAMPILKAN/MENYEMBUNYIKAN GUI
 local startPos = frame.Position
@@ -125,7 +212,7 @@ toggleBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- LOGIKA BARU UNTUK MEMBUAT GUI DAPAT DIGESER
+-- LOGIKA UNTUK MEMBUAT GUI DAPAT DIGESER
 local dragging = false
 local dragInput, mousePos, framePos
 title.InputBegan:Connect(function(input)
