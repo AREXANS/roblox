@@ -5,7 +5,6 @@ local hum = char:WaitForChild("Humanoid")
 local uis = game:GetService("UserInputService")
 local tweenService = game:GetService("TweenService")
 local runService = game:GetService("RunService")
-local flyBodyVelocity = nil -- Kita akan menggunakan ini untuk mode terbang
 
 -- Variabel kontrol
 local isHidden = true
@@ -14,6 +13,8 @@ local originalWalkspeed = hum.WalkSpeed
 local runSpeed = 100
 local flySpeed = 50 
 local flyConnection = nil
+local flyBodyPosition = nil
+local flyBodyVelocity = nil
 
 -- GUI
 local screenGui = Instance.new("ScreenGui", game:GetService("CoreGui"))
@@ -48,10 +49,19 @@ title.TextColor3 = Color3.new(1,1,1)
 title.Font = Enum.Font.SourceSansBold
 title.TextSize = 18
 
+-- Tombol hapus (X)
+local closeBtn = Instance.new("TextButton", frame)
+closeBtn.Size = UDim2.new(0,25,0,25)
+closeBtn.Position = UDim2.new(1,-25,0,0)
+closeBtn.Text = "X"
+closeBtn.TextColor3 = Color3.new(1,1,1)
+closeBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0,5)
+
 -- Tombol minimize
 local minBtn = Instance.new("TextButton", frame)
 minBtn.Size = UDim2.new(0,30,0,25)
-minBtn.Position = UDim2.new(1,-30,0,0)
+minBtn.Position = UDim2.new(1,-55,0,0) -- Posisi disesuaikan
 minBtn.Text = "_"
 minBtn.TextColor3 = Color3.new(1,1,1)
 minBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
@@ -148,18 +158,13 @@ local flyBtn = createToggle("Toggle Fly", 120, function()
         isFlying = true
         flyBtn.BackgroundColor3 = Color3.fromRGB(0,200,0)
         
-        -- Mengatur kecepatan humanoid ke 0 agar pergerakan tidak bentrok
+        -- Matikan gravitasi, atur kecepatan humanoid ke 0
+        local hrp = char:WaitForChild("HumanoidRootPart")
+        hrp.Anchored = true
         hum.WalkSpeed = 0
         hum.JumpPower = 0
-        
-        -- Membuat BodyVelocity untuk pergerakan halus
-        local hrp = char:WaitForChild("HumanoidRootPart")
-        flyBodyVelocity = Instance.new("BodyVelocity")
-        flyBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-        flyBodyVelocity.P = 1000
-        flyBodyVelocity.Parent = hrp
 
-        -- Perulangan untuk mengontrol pergerakan terbang
+        -- Kontrol pergerakan
         flyConnection = runService.Heartbeat:Connect(function()
             local moveVector = Vector3.new(0,0,0)
             if uis:IsKeyDown(Enum.KeyCode.W) then moveVector = moveVector + Vector3.new(0,0,-1) end
@@ -169,20 +174,18 @@ local flyBtn = createToggle("Toggle Fly", 120, function()
             if uis:IsKeyDown(Enum.KeyCode.Space) then moveVector = moveVector + Vector3.new(0,1,0) end
             if uis:IsKeyDown(Enum.KeyCode.LeftShift) then moveVector = moveVector + Vector3.new(0,-1,0) end
             
-            flyBodyVelocity.Velocity = hrp.CFrame:VectorToWorldSpace(moveVector) * flySpeed
+            -- Pergerakan CFrame yang halus
+            hrp.CFrame = hrp.CFrame + hrp.CFrame:VectorToWorldSpace(moveVector) * flySpeed * runService.Heartbeat:GetDt()
         end)
     else
         isFlying = false
         flyBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
         
-        -- Hapus BodyVelocity dan kembalikan kontrol ke Humanoid
-        if flyBodyVelocity then
-            flyBodyVelocity:Destroy()
-            flyBodyVelocity = nil
-        end
+        -- Aktifkan kembali gravitasi dan kembalikan kontrol ke Humanoid
+        local hrp = char:WaitForChild("HumanoidRootPart")
+        hrp.Anchored = false
         hum.WalkSpeed = originalWalkspeed
         hum.JumpPower = 50
-        hum:ChangeState(Enum.HumanoidStateType.Jumping) -- Mengembalikan keadaan normal
         
         if flyConnection then
             flyConnection:Disconnect()
@@ -232,10 +235,15 @@ uis.InputChanged:Connect(function(input)
     end
 end)
 
+-- Tombol hapus
+closeBtn.MouseButton1Click:Connect(function()
+    screenGui:Destroy()
+end)
+
 -- Logika minimize
 minBtn.MouseButton1Click:Connect(function()
     for i, v in pairs(frame:GetChildren()) do
-        if v ~= title and v ~= minBtn then
+        if v ~= title and v ~= minBtn and v ~= closeBtn then
             v.Visible = not v.Visible
         end
     end
