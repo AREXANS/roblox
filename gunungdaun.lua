@@ -5,15 +5,15 @@ local hum = char:WaitForChild("Humanoid")
 local uis = game:GetService("UserInputService")
 local tweenService = game:GetService("TweenService")
 local runService = game:GetService("RunService")
+local flyBodyVelocity = nil -- Kita akan menggunakan ini untuk mode terbang
 
 -- Variabel kontrol
 local isHidden = true
 local isFlying = false
 local originalWalkspeed = hum.WalkSpeed
-local flySpeed = 50 
 local runSpeed = 100
+local flySpeed = 50 
 local flyConnection = nil
-local lastFlyInput = nil
 
 -- GUI
 local screenGui = Instance.new("ScreenGui", game:GetService("CoreGui"))
@@ -134,11 +134,9 @@ end)
 -- Tombol toggle kecepatan
 local speedBtn = createToggle("Toggle Speed", 80, function()
     if hum.WalkSpeed == originalWalkspeed then
-        task.wait(0.1) -- Jeda kecil
         hum.WalkSpeed = runSpeed
         speedBtn.BackgroundColor3 = Color3.fromRGB(0,200,0)
     else
-        task.wait(0.1) -- Jeda kecil
         hum.WalkSpeed = originalWalkspeed
         speedBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
     end
@@ -150,42 +148,42 @@ local flyBtn = createToggle("Toggle Fly", 120, function()
         isFlying = true
         flyBtn.BackgroundColor3 = Color3.fromRGB(0,200,0)
         
-        -- Menonaktifkan Humanoid standar
+        -- Mengatur kecepatan humanoid ke 0 agar pergerakan tidak bentrok
         hum.WalkSpeed = 0
         hum.JumpPower = 0
-        hum.Jump = false
-        hum:ChangeState(Enum.HumanoidStateType.Physics)
+        
+        -- Membuat BodyVelocity untuk pergerakan halus
+        local hrp = char:WaitForChild("HumanoidRootPart")
+        flyBodyVelocity = Instance.new("BodyVelocity")
+        flyBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+        flyBodyVelocity.P = 1000
+        flyBodyVelocity.Parent = hrp
 
-        -- Mengganti kontrol karakter dengan skrip
+        -- Perulangan untuk mengontrol pergerakan terbang
         flyConnection = runService.Heartbeat:Connect(function()
-            local hrp = char:WaitForChild("HumanoidRootPart")
-            if uis:IsKeyDown(Enum.KeyCode.W) then
-                hrp.CFrame = hrp.CFrame + hrp.CFrame.lookVector * flySpeed * runService.Heartbeat:GetDt()
-            end
-            if uis:IsKeyDown(Enum.KeyCode.S) then
-                hrp.CFrame = hrp.CFrame - hrp.CFrame.lookVector * flySpeed * runService.Heartbeat:GetDt()
-            end
-            if uis:IsKeyDown(Enum.KeyCode.A) then
-                hrp.CFrame = hrp.CFrame - hrp.CFrame.rightVector * flySpeed * runService.Heartbeat:GetDt()
-            end
-            if uis:IsKeyDown(Enum.KeyCode.D) then
-                hrp.CFrame = hrp.CFrame + hrp.CFrame.rightVector * flySpeed * runService.Heartbeat:GetDt()
-            end
-            if uis:IsKeyDown(Enum.KeyCode.Space) then
-                hrp.CFrame = hrp.CFrame + Vector3.new(0, flySpeed * runService.Heartbeat:GetDt(), 0)
-            end
-            if uis:IsKeyDown(Enum.KeyCode.LeftShift) then
-                hrp.CFrame = hrp.CFrame - Vector3.new(0, flySpeed * runService.Heartbeat:GetDt(), 0)
-            end
+            local moveVector = Vector3.new(0,0,0)
+            if uis:IsKeyDown(Enum.KeyCode.W) then moveVector = moveVector + Vector3.new(0,0,-1) end
+            if uis:IsKeyDown(Enum.KeyCode.S) then moveVector = moveVector + Vector3.new(0,0,1) end
+            if uis:IsKeyDown(Enum.KeyCode.A) then moveVector = moveVector + Vector3.new(1,0,0) end
+            if uis:IsKeyDown(Enum.KeyCode.D) then moveVector = moveVector + Vector3.new(-1,0,0) end
+            if uis:IsKeyDown(Enum.KeyCode.Space) then moveVector = moveVector + Vector3.new(0,1,0) end
+            if uis:IsKeyDown(Enum.KeyCode.LeftShift) then moveVector = moveVector + Vector3.new(0,-1,0) end
+            
+            flyBodyVelocity.Velocity = hrp.CFrame:VectorToWorldSpace(moveVector) * flySpeed
         end)
     else
         isFlying = false
         flyBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
         
-        -- Mengaktifkan kembali Humanoid standar
+        -- Hapus BodyVelocity dan kembalikan kontrol ke Humanoid
+        if flyBodyVelocity then
+            flyBodyVelocity:Destroy()
+            flyBodyVelocity = nil
+        end
         hum.WalkSpeed = originalWalkspeed
         hum.JumpPower = 50
-        hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        hum:ChangeState(Enum.HumanoidStateType.Jumping) -- Mengembalikan keadaan normal
+        
         if flyConnection then
             flyConnection:Disconnect()
             flyConnection = nil
