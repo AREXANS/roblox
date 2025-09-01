@@ -5,6 +5,7 @@ local hum = char:WaitForChild("Humanoid")
 local uis = game:GetService("UserInputService")
 local tweenService = game:GetService("TweenService")
 local runService = game:GetService("RunService")
+local coreGui = game:GetService("CoreGui")
 
 -- Variabel kontrol
 local isHidden = true
@@ -13,11 +14,9 @@ local originalWalkspeed = hum.WalkSpeed
 local runSpeed = 100
 local flySpeed = 50 
 local flyConnection = nil
-local flyBodyPosition = nil
-local flyBodyVelocity = nil
 
 -- GUI
-local screenGui = Instance.new("ScreenGui", game:GetService("CoreGui"))
+local screenGui = Instance.new("ScreenGui", coreGui)
 screenGui.Name = "Simple_GUI_"..math.random(1000,9999)
 
 -- Tombol kecil untuk menampilkan/menyembunyikan GUI
@@ -61,7 +60,7 @@ Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0,5)
 -- Tombol minimize
 local minBtn = Instance.new("TextButton", frame)
 minBtn.Size = UDim2.new(0,30,0,25)
-minBtn.Position = UDim2.new(1,-55,0,0) -- Posisi disesuaikan
+minBtn.Position = UDim2.new(1,-55,0,0)
 minBtn.Text = "_"
 minBtn.TextColor3 = Color3.new(1,1,1)
 minBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
@@ -87,105 +86,81 @@ local speedLabel = Instance.new("TextLabel", frame)
 speedLabel.Size = UDim2.new(1,-40,0,20)
 speedLabel.Position = UDim2.new(0,20,0,30)
 speedLabel.BackgroundTransparency = 1
-speedLabel.Text = "Walkspeed: "..runSpeed
+speedLabel.Text = "Walkspeed:"
 speedLabel.TextColor3 = Color3.new(1,1,1)
 speedLabel.Font = Enum.Font.SourceSans
 speedLabel.TextSize = 16
 
--- Slider kecepatan
-local speedSlider = Instance.new("Frame", frame)
-speedSlider.Size = UDim2.new(1,-40,0,20)
-speedSlider.Position = UDim2.new(0,20,0,50)
-speedSlider.BackgroundColor3 = Color3.fromRGB(40,40,40)
-Instance.new("UICorner", speedSlider).CornerRadius = UDim.new(0,8)
+-- Kotak input teks untuk kecepatan
+local speedInput = Instance.new("TextBox", frame)
+speedInput.Size = UDim2.new(1,-40,0,30)
+speedInput.Position = UDim2.new(0,20,0,50)
+speedInput.PlaceholderText = "Masukkan kecepatan..."
+speedInput.Text = tostring(runSpeed)
+speedInput.BackgroundColor3 = Color3.fromRGB(40,40,40)
+speedInput.TextColor3 = Color3.new(1,1,1)
+speedInput.Font = Enum.Font.SourceSans
+speedInput.TextSize = 16
+Instance.new("UICorner", speedInput).CornerRadius = UDim.new(0,8)
 
-local speedSliderBar = Instance.new("Frame", speedSlider)
-speedSliderBar.Size = UDim2.new(0.5,0,1,0)
-speedSliderBar.Position = UDim2.new(0,0,0,0)
-speedSliderBar.BackgroundColor3 = Color3.fromRGB(0,150,255)
-Instance.new("UICorner", speedSliderBar).CornerRadius = UDim.new(0,8)
+-- Tombol untuk menerapkan kecepatan baru
+local applySpeedBtn = Instance.new("TextButton", frame)
+applySpeedBtn.Size = UDim2.new(1, -40, 0, 30)
+applySpeedBtn.Position = UDim2.new(0, 20, 0, 85)
+applySpeedBtn.Text = "Apply Speed"
+applySpeedBtn.TextColor3 = Color3.new(1, 1, 1)
+applySpeedBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+applySpeedBtn.Font = Enum.Font.SourceSans
+applySpeedBtn.TextSize = 16
+Instance.new("UICorner", applySpeedBtn).CornerRadius = UDim.new(0, 8)
 
-local speedSliderHandle = Instance.new("TextButton", speedSlider)
-speedSliderHandle.Size = UDim2.new(0,20,1,0)
-speedSliderHandle.Position = UDim2.new(0.5, -10, 0,0)
-speedSliderHandle.BackgroundColor3 = Color3.new(1,1,1)
-speedSliderHandle.Text = ""
-Instance.new("UICorner", speedSliderHandle).CornerRadius = UDim.new(0,8)
-
--- Fungsi slider
-local draggingSlider = false
-local function updateSpeed(input)
-    local x = input.Position.X - speedSlider.AbsolutePosition.X
-    local percent = math.clamp(x / speedSlider.AbsoluteSize.X, 0, 1)
-    runSpeed = 10 + percent * 400 -- Kecepatan dari 10 sampai 410
-    speedSliderHandle.Position = UDim2.new(percent, -10, 0, 0)
-    speedSliderBar.Size = UDim2.new(percent,0,1,0)
-    speedLabel.Text = "Walkspeed: "..math.floor(runSpeed)
-    if hum.WalkSpeed ~= originalWalkspeed then
+applySpeedBtn.MouseButton1Click:Connect(function()
+    local newSpeed = tonumber(speedInput.Text)
+    if newSpeed and newSpeed > 0 then
+        runSpeed = newSpeed
         hum.WalkSpeed = runSpeed
-    end
-end
-speedSliderHandle.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        draggingSlider = true
-    end
-end)
-uis.InputChanged:Connect(function(input)
-    if draggingSlider and input.UserInputType == Enum.UserInputType.MouseMovement then
-        updateSpeed(input)
-    end
-end)
-uis.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        draggingSlider = false
-    end
-end)
-
--- Tombol toggle kecepatan
-local speedBtn = createToggle("Toggle Speed", 80, function()
-    if hum.WalkSpeed == originalWalkspeed then
-        hum.WalkSpeed = runSpeed
-        speedBtn.BackgroundColor3 = Color3.fromRGB(0,200,0)
     else
-        hum.WalkSpeed = originalWalkspeed
-        speedBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+        warn("Kecepatan yang dimasukkan tidak valid.")
     end
 end)
 
 -- Tombol toggle terbang
-local flyBtn = createToggle("Toggle Fly", 120, function()
+local flyBtn = createToggle("Toggle Fly", 125, function()
+    local hrp = char:WaitForChild("HumanoidRootPart")
+    
     if not isFlying then
         isFlying = true
         flyBtn.BackgroundColor3 = Color3.fromRGB(0,200,0)
         
         -- Matikan gravitasi, atur kecepatan humanoid ke 0
-        local hrp = char:WaitForChild("HumanoidRootPart")
-        hrp.Anchored = true
         hum.WalkSpeed = 0
         hum.JumpPower = 0
-
-        -- Kontrol pergerakan
-        flyConnection = runService.Heartbeat:Connect(function()
+        hum.PlatformStand = true
+        
+        flyConnection = runService.RenderStepped:Connect(function()
             local moveVector = Vector3.new(0,0,0)
+            local yDir = 0
+            
             if uis:IsKeyDown(Enum.KeyCode.W) then moveVector = moveVector + Vector3.new(0,0,-1) end
             if uis:IsKeyDown(Enum.KeyCode.S) then moveVector = moveVector + Vector3.new(0,0,1) end
             if uis:IsKeyDown(Enum.KeyCode.A) then moveVector = moveVector + Vector3.new(1,0,0) end
             if uis:IsKeyDown(Enum.KeyCode.D) then moveVector = moveVector + Vector3.new(-1,0,0) end
-            if uis:IsKeyDown(Enum.KeyCode.Space) then moveVector = moveVector + Vector3.new(0,1,0) end
-            if uis:IsKeyDown(Enum.KeyCode.LeftShift) then moveVector = moveVector + Vector3.new(0,-1,0) end
+            
+            if uis:IsKeyDown(Enum.KeyCode.Space) then yDir = yDir + 1 end
+            if uis:IsKeyDown(Enum.KeyCode.LeftShift) then yDir = yDir - 1 end
             
             -- Pergerakan CFrame yang halus
-            hrp.CFrame = hrp.CFrame + hrp.CFrame:VectorToWorldSpace(moveVector) * flySpeed * runService.Heartbeat:GetDt()
+            local movement = hrp.CFrame:VectorToWorldSpace(moveVector) * flySpeed + Vector3.new(0, yDir * flySpeed, 0)
+            hrp.CFrame = hrp.CFrame + movement * runService.RenderStepped:GetDt()
         end)
     else
         isFlying = false
         flyBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
         
         -- Aktifkan kembali gravitasi dan kembalikan kontrol ke Humanoid
-        local hrp = char:WaitForChild("HumanoidRootPart")
-        hrp.Anchored = false
-        hum.WalkSpeed = originalWalkspeed
+        hum.WalkSpeed = runSpeed
         hum.JumpPower = 50
+        hum.PlatformStand = false
         
         if flyConnection then
             flyConnection:Disconnect()
