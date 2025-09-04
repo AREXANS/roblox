@@ -1,4 +1,5 @@
 task.spawn(function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/AREXANS/emoteff/refs/heads/main/emote.lua"))()
     -- Layanan dan Variabel Global
     local Players = game:GetService("Players")
     local UserInputService = game:GetService("UserInputService")
