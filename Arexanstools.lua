@@ -82,9 +82,6 @@ MiniToggleButton.TextColor3 = Color3.fromRGB(0, 200, 255)
 MiniToggleButton.TextSize = 10
 MiniToggleButton.Font = Enum.Font.SourceSansBold
 MiniToggleButton.Parent = ScreenGui
--- [PENTING] Properti 'Active' disetel ke true agar tombol ini "menangkap"
--- input mouse atau sentuhan. Ini mencegah input yang sama menggerakkan
--- kamera game secara tidak sengaja saat Anda berinteraksi dengan tombol.
 MiniToggleButton.Active = true
 
 local MiniUICorner = Instance.new("UICorner")
@@ -125,9 +122,6 @@ TitleBar.Position = UDim2.new(0, 0, 0, 0)
 TitleBar.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 TitleBar.BorderSizePixel = 0
 TitleBar.Parent = MainFrame
--- [PENTING] Sama seperti tombol segitiga, 'Active = true' pada title bar
--- memastikan bahwa saat Anda mengklik dan menyeret jendela, input tersebut
--- tidak "bocor" dan menggerakkan kamera game.
 TitleBar.Active = true
 
 local TitleLabel = Instance.new("TextLabel")
@@ -1247,53 +1241,41 @@ end).LayoutOrder = 4
 createButton(SettingsTabContent, "Tutup Skrip", CloseScript)
 
 -- =================================================================================
--- == FUNGSI UNTUK MEMBUAT GUI DAPAT DIGESER (DRAGGABLE)                          ==
+-- == FUNGSI UNTUK MEMBUAT GUI DAPAT DIGESER (DRAGGABLE) - ANTI-LOMPAT           ==
 -- =================================================================================
--- Fungsi ini dirancang untuk membuat elemen GUI (seperti jendela atau tombol)
--- dapat dipindahkan dengan bebas di layar menggunakan mouse atau sentuhan.
--- Fungsi ini juga cerdas untuk membedakan antara aksi 'menggeser' (drag)
--- dan 'mengklik' (click) agar tidak terjadi tumpang tindih fungsi.
+-- Versi ini secara spesifik didesain untuk mencegah bug "lompatan".
+-- Caranya adalah dengan mengisolasi total setiap sesi geser. Event untuk
+-- pergerakan (`InputChanged`) dan pelepasan (`InputEnded`) hanya dibuat
+-- SETELAH tombol ditekan, dan akan langsung DIHANCURKAN begitu jari diangkat.
+-- Ini memastikan tidak ada event sisa yang bisa menyebabkan tombol bergerak sendiri.
 
 local function MakeDraggable(guiObject, dragHandle)
-    -- guiObject: Elemen yang akan digerakkan (misal: MainFrame).
-    -- dragHandle: Bagian dari guiObject yang akan di-klik untuk menggeser (misal: TitleBar).
-    -- Untuk tombol segitiga, guiObject dan dragHandle adalah elemen yang sama.
-
-    local isDragging = false      -- Status untuk melacak apakah sedang digeser.
-    local dragStartMousePos = nil -- Posisi awal mouse/jari saat mulai menekan.
-    local startObjectPos = nil    -- Posisi awal GUI saat mulai menekan.
-    local inputChangedConnection  -- Koneksi untuk memantau pergerakan input.
-
-    -- Jarak minimum (dalam piksel) pergerakan mouse/jari sebelum dianggap sebagai 'geseran'.
-    -- Ini mencegah klik biasa dianggap sebagai geseran kecil.
-    local DRAG_THRESHOLD = 5
-
-    -- Terhubung ke event saat mouse/jari mulai menekan 'dragHandle'.
     dragHandle.InputBegan:Connect(function(input)
-        -- Hanya proses input dari klik kiri mouse atau sentuhan layar.
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            
+            local isDragging = false
+            local dragStartMousePos = input.Position
+            local startObjectPos = guiObject.Position
+            
+            local inputChangedConnection
+            local inputEndedConnection
 
-            -- Set status awal.
-            isDragging = false -- Awalnya, kita anggap ini BUKAN geseran, mungkin hanya klik.
-            dragStartMousePos = input.Position -- Simpan posisi awal input.
-            startObjectPos = guiObject.Position -- Simpan posisi awal GUI.
+            -- Jarak minimum pergerakan sebelum dianggap sebagai 'geseran'.
+            local DRAG_THRESHOLD = 5
 
-            -- Buat koneksi untuk memantau pergerakan mouse/jari SELAMA tombol ditekan.
+            -- Buat koneksi BARU untuk memantau pergerakan HANYA untuk sesi ini.
             inputChangedConnection = UserInputService.InputChanged:Connect(function(changedInput)
-                -- Pastikan kita memproses tipe input yang sama (mouse atau sentuhan).
                 if changedInput.UserInputType == input.UserInputType then
                     local currentPos = changedInput.Position
-                    local delta = currentPos - dragStartMousePos -- Hitung perbedaan posisi.
+                    local delta = currentPos - dragStartMousePos
 
-                    -- Jika belum dianggap menggeser DAN pergerakan sudah melebihi ambang batas,
-                    -- maka kita sahkan ini sebagai aksi 'menggeser'.
+                    -- Jika pergerakan melebihi ambang batas, sahkan sebagai aksi geser.
                     if not isDragging and delta.Magnitude > DRAG_THRESHOLD then
                         isDragging = true
                     end
 
-                    -- Jika statusnya adalah 'menggeser', perbarui posisi GUI secara real-time.
                     if isDragging then
-                        -- Posisi baru dihitung dari posisi awal GUI ditambah pergerakan mouse/jari.
+                        -- Perbarui posisi secara langsung mengikuti input.
                         guiObject.Position = UDim2.new(
                             startObjectPos.X.Scale, startObjectPos.X.Offset + delta.X,
                             startObjectPos.Y.Scale, startObjectPos.Y.Offset + delta.Y
@@ -1301,45 +1283,40 @@ local function MakeDraggable(guiObject, dragHandle)
                     end
                 end
             end)
-        end
-    end)
 
-    -- Terhubung ke event saat mouse/jari dilepaskan.
-    dragHandle.InputEnded:Connect(function(input)
-        -- Hanya proses akhir dari klik kiri mouse atau sentuhan layar.
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-
-            -- Hentikan pemantauan pergerakan karena input sudah selesai.
-            if inputChangedConnection then
-                inputChangedConnection:Disconnect()
-                inputChangedConnection = nil
-            end
-
-            -- Ini adalah bagian PENTING untuk membedakan klik dan geser.
-            -- Jika 'dragHandle' adalah tombol segitiga DAN status 'isDragging' adalah false,
-            -- itu artinya ini adalah sebuah KLIK biasa, bukan geseran.
-            if dragHandle == MiniToggleButton and not isDragging then
-                -- Jalankan fungsi asli dari tombol: membuka/menutup jendela utama.
-                MainFrame.Visible = not MainFrame.Visible
-                MiniToggleButton.Text = MainFrame.Visible and "◀" or "▶"
-                MiniToggleButton.BackgroundTransparency = MainFrame.Visible and 0.5 or 1
-
-                if MainFrame.Visible then
-                    -- Logika tambahan saat jendela dibuka.
-                    if not (PlayerTabContent.Visible or GeneralTabContent.Visible or CombatTabContent.Visible or TeleportTabContent.Visible or SettingsTabContent.Visible) then
-                        switchTab("Player")
+            -- Buat koneksi BARU untuk memantau pelepasan HANYA untuk sesi ini.
+            inputEndedConnection = UserInputService.InputEnded:Connect(function(endedInput)
+                 if endedInput.UserInputType == input.UserInputType then
+                    -- [PENTING] Hancurkan koneksi event agar tidak ada sisa.
+                    -- Ini adalah kunci untuk mencegah bug lompatan.
+                    if inputChangedConnection then
+                        inputChangedConnection:Disconnect()
                     end
-                    if PlayerTabContent.Visible then
-                        updatePlayerList()
+                    if inputEndedConnection then
+                        inputEndedConnection:Disconnect()
                     end
-                end
-            end
 
-            -- Reset status untuk aksi berikutnya.
-            isDragging = false
+                    -- Jika ini BUKAN aksi geser (yaitu, sebuah klik), jalankan fungsi tombol.
+                    if dragHandle == MiniToggleButton and not isDragging then
+                        MainFrame.Visible = not MainFrame.Visible
+                        MiniToggleButton.Text = MainFrame.Visible and "◀" or "▶"
+                        MiniToggleButton.BackgroundTransparency = MainFrame.Visible and 0.5 or 1
+
+                        if MainFrame.Visible then
+                            if not (PlayerTabContent.Visible or GeneralTabContent.Visible or CombatTabContent.Visible or TeleportTabContent.Visible or SettingsTabContent.Visible) then
+                                switchTab("Player")
+                            end
+                            if PlayerTabContent.Visible then
+                                updatePlayerList()
+                            end
+                        end
+                    end
+                 end
+            end)
         end
     end)
 end
+
 
 -- Terapkan fungsi geser ke Jendela Utama (dipegang dari TitleBar) dan Tombol Segitiga.
 MakeDraggable(MainFrame, TitleBar)
@@ -1365,3 +1342,4 @@ updatePlayerList()
 if LocalPlayer.Character then
     if IsGodModeEnabled then applyGodMode(LocalPlayer.Character) end
 end
+
