@@ -1,16 +1,3 @@
--- File: cheat.lua
---[[
- * ArexansTools (Tanpa Fitur Teleport)
- *
- * Versi ini dari skrip "ArexansTools" mencakup fitur-fitur dasar:
- * - Tab "Pengaturan" yang dapat di-scroll
- * - Auto looping untuk mencapai puncak di obby
- * - Fly, Noclip, dan Walkspeed
- * - Infinity Jump (Fitur baru)
- * - Fling on Touch (Fitur baru)
- * - Anti-Fling (Fitur baru)
---]]
-
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -18,6 +5,10 @@ local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 local CoreGui = game:GetService("CoreGui")
 local HttpService = game:GetService("HttpService")
+local TweenService = game:GetService("TweenService")
+local Lighting = game:GetService("Lighting")
+local MaterialService = game:GetService("MaterialService")
+
 
 -- Settings
 local Settings = {
@@ -33,29 +24,31 @@ local Settings = {
     AimbotPart = "Head",
     MaxAimbotFOV = 200,
     TeleportDistance = 100,
-    ObbyLoopInterval = 0.5,
 }
 
 -- Status variables
 local IsFlying = false
 local IsNoclipEnabled = false
+local IsGodModeEnabled = false 
 local IsKillAuraEnabled = false
 local IsAimbotEnabled = false
 local IsWalkSpeedEnabled = false
 local OriginalWalkSpeed = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") and LocalPlayer.Character:FindFirstChildOfClass("Humanoid").WalkSpeed or 16
 local FlyConnections = {}
+local godModeConnection = nil 
 local KillAuraConnection = nil
 local AimbotConnection = nil
 local AimbotTarget = nil
 local FOVPart = nil
-local IsAutoObbyEnabled = false
-local AutoObbyConnection = nil
 local IsInfinityJumpEnabled = false
 local infinityJumpConnection = nil
-local PlayerButtons = {} -- Tabel untuk melacak tombol pemain yang ada
-local CurrentPlayerFilter = "" -- Variabel untuk menyimpan filter pencarian
-local IsFlingOnTouchEnabled = false
-local flingConnection = nil
+local PlayerButtons = {}
+local CurrentPlayerFilter = ""
+local touchFlingGui = nil
+
+-- Teleport Variables
+local savedTeleportLocations = {}
+local TELEPORT_SAVE_FILE = "ArexansTools_Teleports_" .. tostring(game.PlaceId) .. ".json"
 
 -- AntiFling Variables
 local antifling_velocity_threshold = 85
@@ -64,34 +57,35 @@ local antifling_last_safe_cframe = nil
 local antifling_enabled = false
 local antifling_connection = nil
 
+-- Anti Lag Variables
+local IsAntiLagEnabled = false
+local OriginalGraphicsSettings = {}
 
--- Daftar titik teleportasi gunung
-local MountainCheckpoints = {
-    ["Checkpoint 1 (Pangkalan)"] = Vector3.new(200, 10, 150),
-    ["Checkpoint 2 (Lembah)"] = Vector3.new(350, 50, 200),
-    ["Checkpoint 3 (Tanjakan)"] = Vector3.new(500, 120, 250),
-    ["Checkpoint 4 (Puncak)"] = Vector3.new(650, 200, 300),
-}
 
 -- Create custom GUI
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "ArexansToolsGUI"
 ScreenGui.Parent = CoreGui
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.ResetOnSpawn = false
 
 -- Mini toggle button
 local MiniToggleButton = Instance.new("TextButton")
 MiniToggleButton.Name = "MiniToggleButton"
-MiniToggleButton.Size = UDim2.new(0, 15, 0, 15) -- Ukuran sangat kecil
-MiniToggleButton.Position = UDim2.new(1, -25, 0, 10) -- Pindah ke sudut kanan atas
+MiniToggleButton.Size = UDim2.new(0, 15, 0, 15)
+MiniToggleButton.Position = UDim2.new(1, -25, 0.5, -7.5) 
 MiniToggleButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-MiniToggleButton.BackgroundTransparency = 1 -- Sangat transparan
+MiniToggleButton.BackgroundTransparency = 1
 MiniToggleButton.BorderSizePixel = 0
-MiniToggleButton.Text = "▼" -- Menggunakan segitiga unicode
+MiniToggleButton.Text = "⫷"
 MiniToggleButton.TextColor3 = Color3.fromRGB(0, 200, 255)
 MiniToggleButton.TextSize = 10
 MiniToggleButton.Font = Enum.Font.SourceSansBold
 MiniToggleButton.Parent = ScreenGui
+-- [PENTING] Properti 'Active' disetel ke true agar tombol ini "menangkap"
+-- input mouse atau sentuhan. Ini mencegah input yang sama menggerakkan
+-- kamera game secara tidak sengaja saat Anda berinteraksi dengan tombol.
+MiniToggleButton.Active = true
 
 local MiniUICorner = Instance.new("UICorner")
 MiniUICorner.CornerRadius = UDim.new(0, 8)
@@ -106,8 +100,8 @@ MiniUIStroke.Parent = MiniToggleButton
 -- Main GUI frame
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 250, 0, 350) -- Ukuran lebih kecil
-MainFrame.Position = UDim2.new(0.5, -125, 0.5, -175) -- Posisi di tengah
+MainFrame.Size = UDim2.new(0, 230, 0, 320)
+MainFrame.Position = UDim2.new(0.5, -115, 0.5, -160)
 MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 MainFrame.BackgroundTransparency = 0.5
 MainFrame.BorderSizePixel = 0
@@ -126,11 +120,15 @@ UIStroke.Parent = MainFrame
 
 local TitleBar = Instance.new("Frame")
 TitleBar.Name = "TitleBar"
-TitleBar.Size = UDim2.new(1, 0, 0, 30) -- Ukuran title bar lebih kecil
+TitleBar.Size = UDim2.new(1, 0, 0, 30)
 TitleBar.Position = UDim2.new(0, 0, 0, 0)
 TitleBar.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 TitleBar.BorderSizePixel = 0
 TitleBar.Parent = MainFrame
+-- [PENTING] Sama seperti tombol segitiga, 'Active = true' pada title bar
+-- memastikan bahwa saat Anda mengklik dan menyeret jendela, input tersebut
+-- tidak "bocor" dan menggerakkan kamera game.
+TitleBar.Active = true
 
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
@@ -139,13 +137,13 @@ TitleLabel.Position = UDim2.new(0, 0, 0, 0)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.Text = "Arexans Tools"
 TitleLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
-TitleLabel.TextSize = 14 -- Ukuran font lebih kecil
+TitleLabel.TextSize = 14
 TitleLabel.Font = Enum.Font.SourceSansBold
 TitleLabel.Parent = TitleBar
 
 local TabsFrame = Instance.new("Frame")
 TabsFrame.Name = "TabsFrame"
-TabsFrame.Size = UDim2.new(0, 80, 1, -30) -- Lebar tab lebih kecil
+TabsFrame.Size = UDim2.new(0, 80, 1, -30)
 TabsFrame.Position = UDim2.new(0, 0, 0, 30)
 TabsFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 TabsFrame.BorderSizePixel = 0
@@ -153,13 +151,12 @@ TabsFrame.Parent = MainFrame
 
 local TabListLayout = Instance.new("UIListLayout")
 TabListLayout.Name = "TabListLayout"
-TabListLayout.Padding = UDim.new(0, 5) -- Padding lebih kecil
+TabListLayout.Padding = UDim.new(0, 5)
 TabListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 TabListLayout.VerticalAlignment = Enum.VerticalAlignment.Top
 TabListLayout.FillDirection = Enum.FillDirection.Vertical
 TabListLayout.Parent = TabsFrame
 
--- Add ScrollingFrame to ContentFrame for easy scrolling
 local ContentFrame = Instance.new("Frame")
 ContentFrame.Name = "ContentFrame"
 ContentFrame.Size = UDim2.new(1, -80, 1, -30)
@@ -184,7 +181,9 @@ PlayerListContainer.Size = UDim2.new(1, 0, 1, -55)
 PlayerListContainer.Position = UDim2.new(0, 0, 0, 55)
 PlayerListContainer.BackgroundTransparency = 1
 PlayerListContainer.CanvasSize = UDim2.new(0, 0, 0, 0)
-PlayerListContainer.ScrollBarThickness = 6
+PlayerListContainer.ScrollBarThickness = 10
+PlayerListContainer.VerticalScrollBarInset = Enum.ScrollBarInset.Always
+PlayerListContainer.ScrollingDirection = Enum.ScrollingDirection.Y
 PlayerListContainer.Parent = PlayerTabContent
 
 local GeneralTabContent = Instance.new("ScrollingFrame")
@@ -193,8 +192,10 @@ GeneralTabContent.Size = UDim2.new(1, -10, 1, -10)
 GeneralTabContent.Position = UDim2.new(0, 5, 0, 5)
 GeneralTabContent.BackgroundTransparency = 1
 GeneralTabContent.Visible = false
-GeneralTabContent.CanvasSize = UDim2.new(0, 0, 0, 0)
-GeneralTabContent.ScrollBarThickness = 6
+GeneralTabContent.CanvasSize = UDim2.new(0, 0, 0, 0) 
+GeneralTabContent.ScrollBarThickness = 10
+GeneralTabContent.VerticalScrollBarInset = Enum.ScrollBarInset.Always
+GeneralTabContent.ScrollingDirection = Enum.ScrollingDirection.Y
 GeneralTabContent.Parent = ContentFrame
 
 local CombatTabContent = Instance.new("ScrollingFrame")
@@ -204,7 +205,9 @@ CombatTabContent.Position = UDim2.new(0, 5, 0, 5)
 CombatTabContent.BackgroundTransparency = 1
 CombatTabContent.Visible = false
 CombatTabContent.CanvasSize = UDim2.new(0, 0, 0, 0)
-CombatTabContent.ScrollBarThickness = 6
+CombatTabContent.ScrollBarThickness = 10
+CombatTabContent.VerticalScrollBarInset = Enum.ScrollBarInset.Always
+CombatTabContent.ScrollingDirection = Enum.ScrollingDirection.Y
 CombatTabContent.Parent = ContentFrame
 
 local TeleportTabContent = Instance.new("ScrollingFrame")
@@ -214,7 +217,9 @@ TeleportTabContent.Position = UDim2.new(0, 5, 0, 5)
 TeleportTabContent.BackgroundTransparency = 1
 TeleportTabContent.Visible = false
 TeleportTabContent.CanvasSize = UDim2.new(0, 0, 0, 0)
-TeleportTabContent.ScrollBarThickness = 6
+TeleportTabContent.ScrollBarThickness = 10
+TeleportTabContent.VerticalScrollBarInset = Enum.ScrollBarInset.Always
+TeleportTabContent.ScrollingDirection = Enum.ScrollingDirection.Y
 TeleportTabContent.Parent = ContentFrame
 
 local SettingsTabContent = Instance.new("ScrollingFrame")
@@ -224,806 +229,48 @@ SettingsTabContent.Position = UDim2.new(0, 5, 0, 5)
 SettingsTabContent.BackgroundTransparency = 1
 SettingsTabContent.Visible = false
 SettingsTabContent.CanvasSize = UDim2.new(0, 0, 0, 0)
-SettingsTabContent.ScrollBarThickness = 6
+SettingsTabContent.ScrollBarThickness = 10
+SettingsTabContent.VerticalScrollBarInset = Enum.ScrollBarInset.Always
+SettingsTabContent.ScrollingDirection = Enum.ScrollingDirection.Y
 SettingsTabContent.Parent = ContentFrame
 
 -- Add UIListLayout to tab contents
 local PlayerListLayout = Instance.new("UIListLayout")
 PlayerListLayout.Name = "PlayerListLayout"
 PlayerListLayout.Padding = UDim.new(0, 5)
-PlayerListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-PlayerListLayout.VerticalAlignment = Enum.VerticalAlignment.Top
-PlayerListLayout.FillDirection = Enum.FillDirection.Vertical
 PlayerListLayout.Parent = PlayerListContainer
 
 local GeneralListLayout = Instance.new("UIListLayout")
-GeneralListLayout.Name = "GeneralListLayout"
 GeneralListLayout.Padding = UDim.new(0, 5)
-GeneralListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-GeneralListLayout.VerticalAlignment = Enum.VerticalAlignment.Top
-GeneralListLayout.FillDirection = Enum.FillDirection.Vertical
 GeneralListLayout.Parent = GeneralTabContent
 
 local CombatListLayout = Instance.new("UIListLayout")
-CombatListLayout.Name = "CombatListLayout"
 CombatListLayout.Padding = UDim.new(0, 5)
-CombatListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-CombatListLayout.VerticalAlignment = Enum.VerticalAlignment.Top
-CombatListLayout.FillDirection = Enum.FillDirection.Vertical
 CombatListLayout.Parent = CombatTabContent
 
 local TeleportListLayout = Instance.new("UIListLayout")
-TeleportListLayout.Name = "TeleportListLayout"
-TeleportListLayout.Padding = UDim.new(0, 5)
-TeleportListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-TeleportListLayout.VerticalAlignment = Enum.VerticalAlignment.Top
-TeleportListLayout.FillDirection = Enum.FillDirection.Vertical
+TeleportListLayout.Padding = UDim.new(0, 2)
+TeleportListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 TeleportListLayout.Parent = TeleportTabContent
 
 local SettingsListLayout = Instance.new("UIListLayout")
-SettingsListLayout.Name = "SettingsListLayout"
 SettingsListLayout.Padding = UDim.new(0, 5)
-SettingsListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-SettingsListLayout.VerticalAlignment = Enum.VerticalAlignment.Top
-SettingsListLayout.FillDirection = Enum.FillDirection.Vertical
 SettingsListLayout.Parent = SettingsTabContent
 
--- Main window drag logic
-local isDraggingMain = false
-local lastMousePositionMain = Vector2.new()
-
-TitleBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        isDraggingMain = true
-        lastMousePositionMain = UserInputService:GetMouseLocation()
-    end
-end)
-
-TitleBar.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        isDraggingMain = false
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if isDraggingMain and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local delta = UserInputService:GetMouseLocation() - lastMousePositionMain
-        MainFrame.Position = MainFrame.Position + UDim2.new(0, delta.X, 0, delta.Y)
-        lastMousePositionMain = UserInputService:GetMouseLocation()
-    end
-end)
-
--- Mini button drag logic
-local isDraggingMini = false
-local lastMousePositionMini = Vector2.new()
-
-MiniToggleButton.InputBegan:Connect(function(input, processed)
-    if processed then return end
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        isDraggingMini = true
-        lastMousePositionMini = UserInputService:GetMouseLocation()
-    end
-end)
-
-MiniToggleButton.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        isDraggingMini = false
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input, processed)
-    if processed then return end
-    if isDraggingMini and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local delta = UserInputService:GetMouseLocation() - lastMousePositionMini
-        MiniToggleButton.Position = MiniToggleButton.Position + UDim2.new(0, delta.X, 0, delta.Y)
-        lastMousePositionMini = UserInputService:GetMouseLocation()
-    end
-end)
-
--- Function to switch tabs
-local function switchTab(tabName)
-    PlayerTabContent.Visible = (tabName == "Player")
-    GeneralTabContent.Visible = (tabName == "Umum")
-    CombatTabContent.Visible = (tabName == "Tempur")
-    TeleportTabContent.Visible = (tabName == "Teleport")
-    SettingsTabContent.Visible = (tabName == "Pengaturan")
-    
-    -- Refresh player list when switching to the Player tab
-    if tabName == "Player" then
-        updatePlayerList()
-    end
-end
-
--- Tab buttons
-local function createTabButton(name, parent)
-    local button = Instance.new("TextButton")
-    button.Size = UDim2.new(1, 0, 0, 25) -- Ukuran tombol tab lebih kecil
-    button.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    button.BorderSizePixel = 0
-    button.Text = name
-    button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    button.TextSize = 12 -- Ukuran font lebih kecil
-    button.Font = Enum.Font.SourceSansSemibold
-    button.Parent = parent
-
-    local buttonUICorner = Instance.new("UICorner")
-    buttonUICorner.CornerRadius = UDim.new(0, 5)
-    buttonUICorner.Parent = button
-
-    button.MouseButton1Click:Connect(function()
-        switchTab(name)
-    end)
-    return button
-end
-
-local PlayerTabButton = createTabButton("Player", TabsFrame)
-local GeneralTabButton = createTabButton("Umum", TabsFrame)
-local CombatTabButton = createTabButton("Tempur", TabsFrame)
-local TeleportTabButton = createTabButton("Teleport", TabsFrame)
-local SettingsTabButton = createTabButton("Pengaturan", TabsFrame)
-
--- Function to create FOV visualization circle
-local function CreateFOVCircle()
-    if FOVPart then
-        FOVPart:Destroy()
-    end
-    FOVPart = Instance.new("Part")
-    FOVPart.Name = "AimbotFOV"
-    FOVPart.Anchored = true
-    FOVPart.CanCollide = false
-    FOVPart.Transparency = 1
-    FOVPart.Size = Vector3.new(0.1, 0.1, 0.1)
-    FOVPart.Parent = Workspace
-
-    local billboard = Instance.new("BillboardGui")
-    billboard.Name = "FOVGui"
-    billboard.Adornee = FOVPart
-    billboard.Size = UDim2.new(Settings.AimbotFOV * 2 / 50, 0, Settings.AimbotFOV * 2 / 50, 0)
-    billboard.AlwaysOnTop = true
-    billboard.Parent = FOVPart
-
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(1, 0, 1, 0)
-    frame.BackgroundTransparency = 1
-    frame.BorderSizePixel = 0
-    frame.Parent = billboard
-
-    local uiStroke = Instance.new("UIStroke")
-    uiStroke.Thickness = 2
-    uiStroke.Color = Color3.fromRGB(0, 200, 255)
-    uiStroke.Transparency = 0.2
-    uiStroke.Parent = frame
-end
-
--- Function to update FOV circle size
-local function UpdateFOVCircle()
-    if FOVPart and FOVPart:FindFirstChild("FOVGui") then
-        FOVPart.FOVGui.Size = UDim2.new(Settings.AimbotFOV * 2 / 50, 0, Settings.AimbotFOV * 2 / 50, 0)
-    end
-end
-
--- Fly function (PC)
-local function StartFly()
-    if IsFlying then return end
-    local character = LocalPlayer.Character
-    if not (character and character:FindFirstChild("HumanoidRootPart") and character:FindFirstChildOfClass("Humanoid")) then
-        warn("Karakter atau komponen tidak ditemukan!")
-        return
-    end
-
-    local root = character:WaitForChild("HumanoidRootPart")
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    IsFlying = true
-    humanoid.PlatformStand = true
-
-    local bodyGyro = Instance.new("BodyGyro")
-    bodyGyro.Name = "FlyGyro"
-    bodyGyro.P = 9e4
-    bodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-    bodyGyro.CFrame = root.CFrame
-    bodyGyro.Parent = root
-
-    local bodyVelocity = Instance.new("BodyVelocity")
-    bodyVelocity.Name = "FlyVelocity"
-    bodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-    bodyVelocity.Parent = root
-
-    local controls = {F = 0, B = 0, L = 0, R = 0, Q = 0, E = 0}
-    local lastControls = {F = 0, B = 0, L = 0, R = 0, Q = 0, E = 0}
-    local speed = 0
-
-    FlyConnections[#FlyConnections + 1] = UserInputService.InputBegan:Connect(function(input, processed)
-        if processed then return end
-        if input.UserInputType == Enum.UserInputType.Keyboard then
-            local key = input.KeyCode.Name:lower()
-            if key == "w" then
-                controls.F = Settings.FlySpeed
-            elseif key == "s" then
-                controls.B = -Settings.FlySpeed
-            elseif key == "a" then
-                controls.L = -Settings.FlySpeed
-            elseif key == "d" then
-                controls.R = Settings.FlySpeed
-            elseif key == "e" then
-                controls.Q = Settings.FlySpeed * 2
-            elseif key == "q" then
-                controls.E = -Settings.FlySpeed * 2
-            end
-            Workspace.CurrentCamera.CameraType = Enum.CameraType.Track
-        end
-    end)
-
-    FlyConnections[#FlyConnections + 1] = UserInputService.InputEnded:Connect(function(input, processed)
-        if processed then return end
-        if input.UserInputType == Enum.UserInputType.Keyboard then
-            local key = input.KeyCode.Name:lower()
-            if key == "w" then
-                controls.F = 0
-            elseif key == "s" then
-                controls.B = 0
-            elseif key == "a" then
-                controls.L = 0
-            elseif key == "d" then
-                controls.R = 0
-            elseif key == "e" then
-                controls.Q = 0
-            elseif key == "q" then
-                controls.E = 0
-            end
-        end
-    end)
-
-    FlyConnections[#FlyConnections + 1] = RunService.RenderStepped:Connect(function()
-        if not IsFlying then return end
-        if controls.L + controls.R ~= 0 or controls.F + controls.B ~= 0 or controls.Q + controls.E ~= 0 then
-            speed = 50
-        else
-            speed = 0
-        end
-
-        local camera = Workspace.CurrentCamera
-        if (controls.L + controls.R) ~= 0 or (controls.F + controls.B) ~= 0 or (controls.Q + controls.E) ~= 0 then
-            bodyVelocity.Velocity = ((camera.CFrame.LookVector * (controls.F + controls.B)) +
-                ((camera.CFrame * CFrame.new(controls.L + controls.R, (controls.F + controls.B + controls.Q + controls.E) * 0.2, 0).Position) - camera.CFrame.Position)) * speed
-            lastControls = {F = controls.F, B = controls.B, L = controls.L, R = controls.R, Q = controls.Q, E = controls.E}
-        elseif speed ~= 0 then
-            bodyVelocity.Velocity = ((camera.CFrame.LookVector * (lastControls.F + lastControls.B)) +
-                ((camera.CFrame * CFrame.new(lastControls.L + lastControls.R, (lastControls.F + lastControls.B + lastControls.Q + lastControls.E) * 0.2, 0).Position) - camera.Cframe.Position)) * speed
-        else
-            bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-        end
-        bodyGyro.CFrame = camera.CFrame
+-- Atur CanvasSize untuk Tab secara dinamis
+local function setupCanvasSize(listLayout, scrollingFrame)
+    listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y)
     end)
 end
 
--- Stop fly function (PC)
-local function StopFly()
-    if not IsFlying then return end
-    IsFlying = false
-    local character = LocalPlayer.Character
-    if character and character:FindFirstChildOfClass("Humanoid") then
-        character:FindFirstChildOfClass("Humanoid").PlatformStand = false
-    end
-    for _, conn in pairs(FlyConnections) do
-        conn:Disconnect()
-    end
-    FlyConnections = {}
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-    if root then
-        if root:FindFirstChild("FlyGyro") then
-            root.FlyGyro:Destroy()
-        end
-        if root:FindFirstChild("FlyVelocity") then
-            root.FlyVelocity:Destroy()
-        end
-    end
-    Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-end
+setupCanvasSize(PlayerListLayout, PlayerListContainer)
+setupCanvasSize(GeneralListLayout, GeneralTabContent)
+setupCanvasSize(CombatListLayout, CombatTabContent)
+setupCanvasSize(TeleportListLayout, TeleportTabContent)
+setupCanvasSize(SettingsListLayout, SettingsTabContent)
 
--- Fly function (Mobile)
-local function StartMobileFly()
-    if IsFlying then return end
-    local character = LocalPlayer.Character
-    if not (character and character:FindFirstChild("HumanoidRootPart") and character:FindFirstChildOfClass("Humanoid")) then
-        warn("Karakter atau komponen tidak ditemukan!")
-        return
-    end
-
-    local root = character:WaitForChild("HumanoidRootPart")
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    IsFlying = true
-    humanoid.PlatformStand = true
-
-    local bodyVelocity = Instance.new("BodyVelocity")
-    bodyVelocity.Name = "FlyVelocity"
-    bodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-    bodyVelocity.Parent = root
-
-    local bodyGyro = Instance.new("BodyGyro")
-    bodyGyro.Name = "FlyGyro"
-    bodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-    bodyGyro.P = 1000
-    bodyGyro.D = 50
-    bodyGyro.Parent = root
-
-    local controlModule = require(LocalPlayer.PlayerScripts:WaitForChild("PlayerModule"):WaitForChild("ControlModule"))
-    FlyConnections[#FlyConnections + 1] = RunService.RenderStepped:Connect(function()
-        if not IsFlying then return end
-        local camera = Workspace.CurrentCamera
-        if not (character and root and root:FindFirstChild("FlyVelocity") and root:FindFirstChild("FlyGyro")) then
-            StopMobileFly()
-            return
-        end
-        local velocityHandler = root.FlyVelocity
-        local gyroHandler = root.FlyGyro
-        velocityHandler.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-        gyroHandler.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-        gyroHandler.CFrame = camera.CFrame
-        velocityHandler.Velocity = Vector3.new(0, 0, 0)
-
-        local direction = controlModule:GetMoveVector()
-        if direction.X ~= 0 then
-            velocityHandler.Velocity = velocityHandler.Velocity + camera.CFrame.RightVector * (direction.X * (Settings.FlySpeed * 50))
-        end
-        if direction.Z ~= 0 then
-            velocityHandler.Velocity = velocityHandler.Velocity - camera.CFrame.LookVector * (direction.Z * (Settings.FlySpeed * 50))
-        end
-    end)
-
-    FlyConnections[#FlyConnections + 1] = LocalPlayer.CharacterAdded:Connect(function()
-        if IsFlying then
-            task.wait(0.1)
-            StartMobileFly()
-        end
-    end)
-end
-
--- Stop fly function (Mobile)
-local function StopMobileFly()
-    if not IsFlying then return end
-    IsFlying = false
-    local character = LocalPlayer.Character
-    if character and character:FindFirstChildOfClass("Humanoid") then
-        character:FindFirstChildOfClass("Humanoid").PlatformStand = false
-    end
-    for _, conn in pairs(FlyConnections) do
-        conn:Disconnect()
-    end
-    FlyConnections = {}
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-    if root then
-        if root:FindFirstChild("FlyGyro") then
-            root.FlyGyro:Destroy()
-        end
-        if root:FindFirstChild("FlyVelocity") then
-            root.FlyVelocity:Destroy()
-        end
-    end
-    Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-end
-
--- Noclip function
-local function ToggleNoclip(enabled)
-    IsNoclipEnabled = enabled
-    if enabled then
-        task.spawn(function()
-            while IsNoclipEnabled and LocalPlayer.Character do
-                for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
-                    if part:IsA("BasePart") and part.CanCollide then
-                        part.CanCollide = false
-                    end
-                end
-                task.wait(0.1)
-            end
-            if LocalPlayer.Character then
-                for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        part.CanCollide = true
-                    end
-                end
-            end
-        end)
-    end
-end
-
--- Walk speed toggle function
-local function ToggleWalkSpeed(enabled)
-    IsWalkSpeedEnabled = enabled
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-        local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if enabled then
-            humanoid.WalkSpeed = Settings.WalkSpeed
-        else
-            humanoid.WalkSpeed = OriginalWalkSpeed
-        end
-    end
-end
-
--- Fling on Touch function (DIPERBAIKI)
-local function ToggleFlingOnTouch(enabled)
-    IsFlingOnTouchEnabled = enabled
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        local localHRP = LocalPlayer.Character.HumanoidRootPart
-        if enabled then
-            flingConnection = localHRP.Touched:Connect(function(partTouched)
-                local otherCharacter = partTouched:FindFirstAncestorOfClass("Model")
-                if otherCharacter and otherCharacter ~= LocalPlayer.Character then
-                    local otherPlayer = Players:GetPlayerFromCharacter(otherCharacter)
-                    if otherPlayer and otherCharacter:FindFirstChild("HumanoidRootPart") then
-                        local otherHRP = otherCharacter.HumanoidRootPart
-                        local direction = (otherHRP.Position - localHRP.Position).Unit
-                        local flingForce = Vector3.new(direction.X * 150, 150, direction.Z * 150)
-                        local bodyVelocity = Instance.new("BodyVelocity")
-                        bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                        bodyVelocity.Velocity = flingForce
-                        bodyVelocity.Parent = otherHRP
-                        game:GetService("Debris"):AddItem(bodyVelocity, 0.5)
-                    end
-                end
-            end)
-        else
-            if flingConnection then
-                flingConnection:Disconnect()
-                flingConnection = nil
-            end
-        end
-    end
-end
-
--- Kill aura function
-local function ToggleKillAura(enabled)
-    IsKillAuraEnabled = enabled
-    if enabled then
-        KillAuraConnection = RunService.Heartbeat:Connect(function()
-            if not (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")) then
-                return
-            end
-            local root = LocalPlayer.Character.HumanoidRootPart
-            for _, npc in pairs(Workspace:GetDescendants()) do
-                if npc:IsA("Model") and npc ~= LocalPlayer.Character and npc:FindFirstChildOfClass("Humanoid") and npc:FindFirstChild("HumanoidRootPart") then
-                    local humanoid = npc:FindFirstChildOfClass("Humanoid")
-                    local npcRoot = npc.HumanoidRootPart
-                    local distance = (npcRoot.Position - root.Position).Magnitude
-                    if distance <= Settings.KillAuraRadius and humanoid.Health > 0 then
-                        humanoid:TakeDamage(Settings.KillAuraDamage)
-                    end
-                end
-            end
-        end)
-    else
-        if KillAuraConnection then
-            KillAuraConnection:Disconnect()
-            KillAuraConnection = nil
-        end
-    end
-end
-
--- Aimbot function
-local function ToggleAimbot(enabled)
-    IsAimbotEnabled = enabled
-    if enabled then
-        CreateFOVCircle()
-        AimbotConnection = RunService.RenderStepped:Connect(function()
-            if not (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and Workspace.CurrentCamera) then
-                return
-            end
-            local camera = Workspace.CurrentCamera
-            local root = LocalPlayer.Character.HumanoidRootPart
-            local mousePos = UserInputService:GetMouseLocation()
-            local closestNPC = nil
-            local closestDistance = Settings.AimbotFOV
-
-            -- Find the closest NPC within the FOV
-            for _, npc in pairs(Workspace:GetDescendants()) do
-                if npc:IsA("Model") and npc ~= LocalPlayer.Character and npc:FindFirstChildOfClass("Humanoid") and npc:FindFirstChild(Settings.AimbotPart) then
-                    local humanoid = npc:FindFirstChildOfClass("Humanoid")
-                    if humanoid.Health <= 0 then
-                        continue
-                    end
-                    local partPos = npc[Settings.AimbotPart].Position
-                    local screenPos, onScreen = camera:WorldToViewportPoint(partPos)
-                    if not onScreen then
-                        continue
-                    end
-                    local distance = (mousePos - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
-                    if distance <= closestDistance then
-                        closestDistance = distance
-                        closestNPC = npc
-                    end
-                end
-            end
-
-            AimbotTarget = closestNPC
-            if AimbotTarget and AimbotTarget:FindFirstChild(Settings.AimbotPart) then
-                local targetPos = AimbotTarget[Settings.AimbotPart].Position
-                camera.CFrame = CFrame.new(camera.CFrame.Position, targetPos)
-                local humanoid = AimbotTarget:FindFirstChildOfClass("Humanoid")
-                if humanoid and humanoid.Health > 0 then
-                    humanoid:TakeDamage(Settings.KillAuraDamage)
-                end
-            end
-
-            -- Update FOV circle position
-            if FOVPart then
-                FOVPart.CFrame = CFrame.new(root.Position + Vector3.new(0, 2, 0))
-                FOVPart.FOVGui.Enabled = true
-            end
-        end)
-    else
-        if AimbotConnection then
-            AimbotConnection:Disconnect()
-            AimbotConnection = nil
-        end
-        AimbotTarget = nil
-        if FOVPart then
-            FOVPart:Destroy()
-            FOVPart = nil
-        end
-    end
-end
-
--- AntiFling Logic Function
-local function protect_character()
-	if not LocalPlayer.Character then return end
-	local humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
-	local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-
-	if root and humanoid and antifling_enabled then
-		if root.Velocity.Magnitude <= antifling_velocity_threshold then
-			antifling_last_safe_cframe = root.CFrame
-		end
-
-		if root.Velocity.Magnitude > antifling_velocity_threshold then
-			if antifling_last_safe_cframe then
-				root.Velocity = Vector3.new(0,0,0)
-				root.AssemblyLinearVelocity = Vector3.new(0,0,0)
-				root.AssemblyAngularVelocity = Vector3.new(0,0,0)
-				root.CFrame = antifling_last_safe_cframe
-			end
-		end
-
-		if root.AssemblyAngularVelocity.Magnitude > antifling_angular_threshold then
-			root.AssemblyAngularVelocity = Vector3.new(0,0,0)
-		end
-
-		if humanoid:GetState() == Enum.HumanoidStateType.FallingDown then
-			humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-		end
-	end
-end
-
--- Function to toggle anti-fling
-local function ToggleAntiFling(enabled)
-    antifling_enabled = enabled
-    if enabled then
-        if not antifling_connection then
-            antifling_connection = RunService.Heartbeat:Connect(protect_character)
-        end
-    else
-        if antifling_connection then
-            antifling_connection:Disconnect()
-            antifling_connection = nil
-        end
-    end
-end
-
--- Function to disable all features
-local function DisableAllFeatures()
-    if IsFlying then
-        if UserInputService.TouchEnabled then
-            StopMobileFly()
-        else
-            StopFly()
-        end
-    end
-    if IsWalkSpeedEnabled then
-        ToggleWalkSpeed(false)
-    end
-    if IsNoclipEnabled then
-        ToggleNoclip(false)
-    end
-    if IsKillAuraEnabled then
-        ToggleKillAura(false)
-    end
-    if IsAimbotEnabled then
-        ToggleAimbot(false)
-    end
-    if IsAutoObbyEnabled then
-        ToggleAutoObby(false)
-    end
-    if IsInfinityJumpEnabled then
-        IsInfinityJumpEnabled = false
-        if infinityJumpConnection then
-            infinityJumpConnection:Disconnect()
-            infinityJumpConnection = nil
-        end
-    end
-    if IsFlingOnTouchEnabled then
-        ToggleFlingOnTouch(false)
-    end
-    if antifling_enabled then
-        ToggleAntiFling(false)
-    end
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-        LocalPlayer.Character:FindFirstChildOfClass("Humanoid").WalkSpeed = OriginalWalkSpeed
-    end
-end
-
--- Function to remove the script from the game
-local function CloseScript()
-    DisableAllFeatures()
-    ScreenGui:Destroy()
-    script:Destroy()
-end
-
--- Handle character respawn to maintain speed
-LocalPlayer.CharacterAdded:Connect(function(character)
-    task.wait(0.1)
-    if character:FindFirstChildOfClass("Humanoid") then
-        if IsWalkSpeedEnabled then
-            character.Humanoid.WalkSpeed = Settings.WalkSpeed
-        else
-            character.Humanoid.WalkSpeed = OriginalWalkSpeed
-        end
-    end
-    -- reconnect fling on touch if enabled
-    if IsFlingOnTouchEnabled then
-        ToggleFlingOnTouch(true)
-    end
-    -- reconnect anti-fling if enabled
-    if antifling_enabled then
-        ToggleAntiFling(true)
-    end
-end)
-
--- UI for content
-local function createSlider(parent, name, min, max, current, suffix, increment, callback)
-    local sliderFrame = Instance.new("Frame")
-    sliderFrame.Size = UDim2.new(1, 0, 0, 50)
-    sliderFrame.BackgroundTransparency = 1
-    sliderFrame.Parent = parent
-
-    local titleLabel = Instance.new("TextLabel")
-    titleLabel.Size = UDim2.new(1, 0, 0, 15)
-    titleLabel.BackgroundTransparency = 1
-    titleLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    titleLabel.TextSize = 12
-    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    titleLabel.Text = name .. ": " .. tostring(math.floor(current * 10) / 10) .. " " .. suffix
-    titleLabel.Font = Enum.Font.SourceSans
-    titleLabel.Parent = sliderFrame
-
-    local sliderBase = Instance.new("Frame")
-    sliderBase.Name = "SliderBase"
-    sliderBase.Size = UDim2.new(1, 0, 0, 10)
-    sliderBase.Position = UDim2.new(0, 0, 0, 25)
-    sliderBase.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    sliderBase.BorderSizePixel = 0
-    sliderBase.Parent = sliderFrame
-    
-    local sliderBaseUICorner = Instance.new("UICorner")
-    sliderBaseUICorner.CornerRadius = UDim.new(0, 5)
-    sliderBaseUICorner.Parent = sliderBase
-
-    local sliderFill = Instance.new("Frame")
-    sliderFill.Name = "SliderFill"
-    local fillWidth = (current - min) / (max - min)
-    sliderFill.Size = UDim2.new(fillWidth, 0, 1, 0)
-    sliderFill.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
-    sliderFill.BorderSizePixel = 0
-    sliderFill.Parent = sliderBase
-    
-    local sliderFillUICorner = Instance.new("UICorner")
-    sliderFillUICorner.CornerRadius = UDim.new(0, 5)
-    sliderFillUICorner.Parent = sliderFill
-    
-    local sliderThumb = Instance.new("Frame")
-    sliderThumb.Name = "SliderThumb"
-    sliderThumb.Size = UDim2.new(0, 15, 0, 25)
-    sliderThumb.Position = UDim2.new(fillWidth, -7.5, 0.5, -12.5)
-    sliderThumb.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
-    sliderThumb.BorderSizePixel = 0
-    sliderThumb.Parent = sliderBase
-    
-    local sliderThumbUICorner = Instance.new("UICorner")
-    sliderThumbUICorner.CornerRadius = UDim.new(0, 5)
-    sliderThumbUICorner.Parent = sliderThumb
-    
-    local UIStrokeThumb = Instance.new("UIStroke")
-    UIStrokeThumb.Color = Color3.fromRGB(255, 255, 255)
-    UIStrokeThumb.Thickness = 1
-    UIStrokeThumb.Transparency = 0.8
-    UIStrokeThumb.Parent = sliderThumb
-
-    local isDraggingSlider = false
-    local function updateSlider(input)
-        local pos = input.Position.X - sliderBase.AbsolutePosition.X
-        local newWidth = math.min(math.max(pos, 0), sliderBase.AbsoluteSize.X)
-        local newValue = min + (newWidth / sliderBase.AbsoluteSize.X) * (max - min)
-        newValue = math.floor(newValue / increment) * increment
-        
-        -- Update UI
-        local newFillWidth = (newValue - min) / (max - min)
-        sliderFill.Size = UDim2.new(newFillWidth, 0, 1, 0)
-        sliderThumb.Position = UDim2.new(newFillWidth, -7.5, 0.5, -12.5)
-        titleLabel.Text = name .. ": " .. tostring(math.floor(newValue * 10) / 10) .. " " .. suffix
-        
-        callback(newValue)
-    end
-
-    local function handleDrag(input, processed)
-        if processed then return end
-        if isDraggingSlider then
-            updateSlider(input)
-        end
-    end
-
-    sliderBase.InputBegan:Connect(function(input, processed)
-        if processed then return end
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            isDraggingSlider = true
-            updateSlider(input)
-        end
-    end)
-    
-    sliderBase.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            isDraggingSlider = false
-        end
-    end)
-    
-    UserInputService.InputChanged:Connect(function(input)
-        handleDrag(input)
-    end)
-    
-    return sliderFrame
-end
-
-local function createToggle(parent, name, initialState, callback)
-    local toggleFrame = Instance.new("Frame")
-    toggleFrame.Size = UDim2.new(1, 0, 0, 25)
-    toggleFrame.BackgroundTransparency = 1
-    toggleFrame.Parent = parent
-
-    local toggleLabel = Instance.new("TextLabel")
-    toggleLabel.Size = UDim2.new(0.8, -10, 1, 0)
-    toggleLabel.Position = UDim2.new(0, 5, 0, 0)
-    toggleLabel.BackgroundTransparency = 1
-    toggleLabel.Text = name
-    toggleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    toggleLabel.TextSize = 12
-    toggleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    toggleLabel.Font = Enum.Font.SourceSans
-    toggleLabel.Parent = toggleFrame
-
-    local toggleButton = Instance.new("TextButton")
-    toggleButton.Name = "ToggleButton"
-    toggleButton.Size = UDim2.new(0, 50, 0, 20)
-    toggleButton.Position = UDim2.new(1, -55, 0, 2.5)
-    toggleButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    toggleButton.BorderSizePixel = 0
-    toggleButton.Text = initialState and "ON" or "OFF"
-    toggleButton.TextColor3 = initialState and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
-    toggleButton.TextSize = 12
-    toggleButton.Font = Enum.Font.SourceSansBold
-    toggleButton.Parent = toggleFrame
-
-    local buttonUICorner = Instance.new("UICorner")
-    buttonUICorner.CornerRadius = UDim.new(0, 5)
-    buttonUICorner.Parent = toggleButton
-    
-    local isToggled = initialState
-    toggleButton.MouseButton1Click:Connect(function()
-        isToggled = not isToggled
-        toggleButton.Text = isToggled and "ON" or "OFF"
-        toggleButton.TextColor3 = isToggled and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
-        callback(isToggled)
-    end)
-    return toggleFrame
-end
-
+-- Forward declaration
 local function createButton(parent, name, callback)
     local button = Instance.new("TextButton")
     button.Size = UDim2.new(1, 0, 0, 30)
@@ -1034,349 +281,1087 @@ local function createButton(parent, name, callback)
     button.TextSize = 14
     button.Font = Enum.Font.SourceSansBold
     button.Parent = parent
-    
-    local buttonUICorner = Instance.new("UICorner")
+    local buttonUICorner = Instance.new("UICorner", button)
     buttonUICorner.CornerRadius = UDim.new(0, 5)
-    buttonUICorner.Parent = button
-
-    button.MouseButton1Click:Connect(function()
-        callback()
-    end)
+    button.MouseButton1Click:Connect(callback)
     return button
 end
 
-local function createDropdown(parent, name, options, current, callback)
-    local dropdownFrame = Instance.new("Frame")
-    dropdownFrame.Size = UDim2.new(1, 0, 0, 50)
-    dropdownFrame.BackgroundTransparency = 1
-    dropdownFrame.Parent = parent
+-- ====================================================================
+-- == BAGIAN TELEPORT (FITUR DRAG SUDAH DIHAPUS)                     ==
+-- ====================================================================
 
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 0, 20)
-    label.BackgroundTransparency = 1
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Text = name .. ": " .. current
-    label.TextColor3 = Color3.fromRGB(255, 255, 255)
-    label.TextSize = 12
-    label.Font = Enum.Font.SourceSans
-    label.Parent = dropdownFrame
-
-    local optionButton = Instance.new("TextButton")
-    optionButton.Size = UDim2.new(1, 0, 0, 25)
-    optionButton.Position = UDim2.new(0, 0, 0, 25)
-    optionButton.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
-    optionButton.BorderSizePixel = 0
-    optionButton.Text = "Ubah Target"
-    optionButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    optionButton.TextSize = 12
-    optionButton.Font = Enum.Font.SourceSans
-    optionButton.Parent = dropdownFrame
-
-    local buttonUICorner = Instance.new("UICorner")
-    buttonUICorner.CornerRadius = UDim.new(0, 5)
-    buttonUICorner.Parent = optionButton
-
-    local currentIndex = 1
-    optionButton.MouseButton1Click:Connect(function()
-        currentIndex = currentIndex + 1
-        if currentIndex > #options then
-            currentIndex = 1
+local function naturalCompare(a, b)
+    local function split(s)
+        local parts = {}
+        for text, number in s:gmatch("([^%d]*)(%d*)") do
+            if text ~= "" then table.insert(parts, text:lower()) end
+            if number ~= "" then table.insert(parts, tonumber(number)) end
         end
-        local newOption = options[currentIndex]
-        label.Text = name .. ": " .. newOption
-        callback(newOption)
-    end)
+        return parts
+    end
 
-    return dropdownFrame
+    local partsA = split(a.Name or "")
+    local partsB = split(b.Name or "")
+    
+    for i = 1, math.min(#partsA, #partsB) do
+        local partA = partsA[i]
+        local partB = partsB[i]
+
+        if type(partA) ~= type(partB) then
+            return type(partA) == "number"
+        end
+
+        if partA < partB then
+            return true
+        elseif partA > partB then
+            return false
+        end
+    end
+
+    return #partsA < #partsB
 end
 
--- Player Tab Header (Search and Player Count)
-local playerHeaderFrame = Instance.new("Frame")
-playerHeaderFrame.Size = UDim2.new(1, 0, 0, 55)
-playerHeaderFrame.BackgroundTransparency = 1
-playerHeaderFrame.Parent = PlayerTabContent
+local updateTeleportList 
 
-local playerCountLabel = Instance.new("TextLabel")
-playerCountLabel.Name = "PlayerCountLabel"
-playerCountLabel.Size = UDim2.new(1, 0, 0, 15)
-playerCountLabel.BackgroundTransparency = 1
-playerCountLabel.Text = "Pemain Online: " .. #Players:GetPlayers()
-playerCountLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-playerCountLabel.TextSize = 12
-playerCountLabel.TextXAlignment = Enum.TextXAlignment.Left
-playerCountLabel.Font = Enum.Font.SourceSansBold
-playerCountLabel.Parent = playerHeaderFrame
-
-local searchFrame = Instance.new("Frame")
-searchFrame.Size = UDim2.new(1, 0, 0, 25)
-searchFrame.Position = UDim2.new(0, 0, 0, 20)
-searchFrame.BackgroundTransparency = 1
-searchFrame.Parent = playerHeaderFrame
-
-local searchTextBox = Instance.new("TextBox")
-searchTextBox.Size = UDim2.new(0.7, -10, 1, 0)
-searchTextBox.Position = UDim2.new(0, 5, 0, 0)
-searchTextBox.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-searchTextBox.TextColor3 = Color3.fromRGB(200, 200, 200)
-searchTextBox.Text = "Cari Pemain..."
-searchTextBox.PlaceholderText = "Cari Pemain..."
-searchTextBox.TextSize = 12
-searchTextBox.Font = Enum.Font.SourceSans
-searchTextBox.ClearTextOnFocus = true
-searchTextBox.Parent = searchFrame
-
-local searchButton = Instance.new("TextButton")
-searchButton.Size = UDim2.new(0.3, 0, 1, 0)
-searchButton.Position = UDim2.new(0.7, 0, 0, 0)
-searchButton.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
-searchButton.BorderSizePixel = 0
-searchButton.Text = "Cari"
-searchButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-searchButton.TextSize = 12
-searchButton.Font = Enum.Font.SourceSansBold
-searchButton.Parent = searchFrame
-
-local searchBoxUICorner = Instance.new("UICorner")
-searchBoxUICorner.CornerRadius = UDim.new(0, 5)
-searchBoxUICorner.Parent = searchTextBox
-
-local searchButtonUICorner = Instance.new("UICorner")
-searchButtonUICorner.CornerRadius = UDim.new(0, 5)
-searchButtonUICorner.Parent = searchButton
-
-searchTextBox.FocusLost:Connect(function()
-    CurrentPlayerFilter = searchTextBox.Text
-    updatePlayerList()
-end)
-
-searchButton.MouseButton1Click:Connect(function()
-    CurrentPlayerFilter = searchTextBox.Text
-    updatePlayerList()
-end)
-
--- Player Tab Functions
-local function createPlayerButton(player)
-    local playerFrame = Instance.new("Frame")
-    playerFrame.Size = UDim2.new(1, 0, 0, 45) -- Disesuaikan untuk dua baris teks
-    playerFrame.BackgroundTransparency = 1
-    playerFrame.Parent = PlayerListContainer
-    playerFrame.Name = player.Name
-
-    local avatarImage = Instance.new("ImageLabel")
-    avatarImage.Size = UDim2.new(0, 30, 0, 30) -- Ukuran avatar lebih besar
-    avatarImage.Position = UDim2.new(0, 5, 0.5, -15)
-    avatarImage.BackgroundTransparency = 1
-    avatarImage.Image = Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420)
-    avatarImage.Parent = playerFrame
-
-    local displaynameLabel = Instance.new("TextLabel")
-    displaynameLabel.Size = UDim2.new(0.6, -20, 0, 20)
-    displaynameLabel.Position = UDim2.new(0, 40, 0, 5)
-    displaynameLabel.BackgroundTransparency = 1
-    displaynameLabel.TextXAlignment = Enum.TextXAlignment.Left
-    displaynameLabel.TextYAlignment = Enum.TextYAlignment.Center
-    displaynameLabel.Text = player.DisplayName
-    displaynameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    displaynameLabel.TextSize = 12
-    displaynameLabel.Font = Enum.Font.SourceSansSemibold
-    displaynameLabel.Parent = playerFrame
-
-    local usernameLabel = Instance.new("TextLabel")
-    usernameLabel.Size = UDim2.new(0.6, -20, 0, 20)
-    usernameLabel.Position = UDim2.new(0, 40, 0, 20)
-    usernameLabel.BackgroundTransparency = 1
-    usernameLabel.TextXAlignment = Enum.TextXAlignment.Left
-    usernameLabel.TextYAlignment = Enum.TextYAlignment.Center
-    usernameLabel.Text = "@" .. player.Name
-    usernameLabel.TextColor3 = Color3.fromRGB(150, 150, 150) -- Warna abu-abu
-    usernameLabel.TextSize = 10 -- Ukuran lebih kecil
-    usernameLabel.Font = Enum.Font.SourceSans
-    usernameLabel.Parent = playerFrame
-
-    local teleportButton = Instance.new("TextButton")
-    teleportButton.Size = UDim2.new(0, 40, 0, 20)
-    teleportButton.Position = UDim2.new(1, -45, 0.5, -10)
-    teleportButton.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
-    teleportButton.BorderSizePixel = 0
-    teleportButton.Text = "TP"
-    teleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    teleportButton.TextSize = 10
-    teleportButton.Font = Enum.Font.SourceSansBold
-    teleportButton.Parent = playerFrame
+local function showNotification(message, color)
+    local notifFrame = Instance.new("Frame", ScreenGui)
+    notifFrame.Size = UDim2.new(0, 200, 0, 50)
+    notifFrame.Position = UDim2.new(0.5, -100, 0, -60)
+    notifFrame.BackgroundColor3 = color or Color3.fromRGB(30, 30, 30)
+    notifFrame.BorderSizePixel = 0
+    local corner = Instance.new("UICorner", notifFrame)
+    corner.CornerRadius = UDim.new(0, 8)
     
-    local teleportUICorner = Instance.new("UICorner")
-    teleportUICorner.CornerRadius = UDim.new(0, 5)
-    teleportUICorner.Parent = teleportButton
+    local notifLabel = Instance.new("TextLabel", notifFrame)
+    notifLabel.Size = UDim2.new(1, 0, 1, 0)
+    notifLabel.BackgroundTransparency = 1
+    notifLabel.Text = message
+    notifLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    notifLabel.Font = Enum.Font.SourceSansBold
 
-    teleportButton.MouseButton1Click:Connect(function()
-        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(player.Character.HumanoidRootPart.Position)
-            end
-        end
+    local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+    local goalPosition = UDim2.new(0.5, -100, 0, 10)
+    TweenService:Create(notifFrame, tweenInfo, {Position = goalPosition}):Play()
+
+    task.delay(3, function()
+        TweenService:Create(notifFrame, tweenInfo, {Position = UDim2.new(0.5, -100, 0, -60)}):Play()
+        task.wait(0.5)
+        notifFrame:Destroy()
     end)
-
-    return playerFrame
 end
 
-local function updatePlayerList()
-    playerCountLabel.Text = "Pemain Online: " .. #Players:GetPlayers()
+local function saveTeleportData()
+    if not writefile then
+        warn("Fungsi 'writefile' tidak tersedia di executor Anda. Teleport tidak akan disimpan.")
+        return
+    end
     
-    -- Hapus semua tombol pemain yang sudah ada kecuali header
-    for _, child in pairs(PlayerListContainer:GetChildren()) do
-        if child.Name ~= "PlayerListLayout" then
+    local dataToSave = {}
+    for _, loc in ipairs(savedTeleportLocations) do
+        table.insert(dataToSave, {
+            Name = loc.Name,
+            CFrameData = {loc.CFrame:GetComponents()}
+        })
+    end
+    
+    local success, result = pcall(function()
+        local jsonData = HttpService:JSONEncode(dataToSave)
+        writefile(TELEPORT_SAVE_FILE, jsonData)
+    end)
+    
+    if not success then
+        warn("Gagal menyimpan data teleport:", result)
+    end
+end
+
+local function loadTeleportData()
+    if not readfile or not isfile or not isfile(TELEPORT_SAVE_FILE) then
+        return
+    end
+    
+    local success, result = pcall(function()
+        local fileContent = readfile(TELEPORT_SAVE_FILE)
+        local decodedData = HttpService:JSONDecode(fileContent)
+        
+        savedTeleportLocations = {}
+        for _, data in ipairs(decodedData) do
+            table.insert(savedTeleportLocations, {
+                Name = data.Name,
+                CFrame = CFrame.new(unpack(data.CFrameData))
+            })
+        end
+        
+        table.sort(savedTeleportLocations, naturalCompare)
+        
+        if updateTeleportList then
+            updateTeleportList()
+        end
+    end)
+    
+    if not success then
+        warn("Gagal memuat data teleport:", result)
+    end
+end
+
+local function showRenamePrompt(locationIndex, callback)
+    local oldName = savedTeleportLocations[locationIndex].Name
+
+    local promptFrame = Instance.new("Frame")
+    promptFrame.Size = UDim2.new(0, 200, 0, 100)
+    promptFrame.Position = UDim2.new(0.5, -100, 0.5, -50)
+    promptFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    promptFrame.BorderSizePixel = 0
+    promptFrame.ZIndex = 10
+    promptFrame.Parent = MainFrame
+
+    local corner = Instance.new("UICorner", promptFrame)
+    corner.CornerRadius = UDim.new(0, 8)
+    
+    local stroke = Instance.new("UIStroke", promptFrame)
+    stroke.Color = Color3.fromRGB(0, 150, 255)
+    stroke.Thickness = 1
+
+    local title = Instance.new("TextLabel", promptFrame)
+    title.Size = UDim2.new(1, 0, 0, 20)
+    title.Text = "Ganti Nama Lokasi"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.BackgroundTransparency = 1
+    title.Font = Enum.Font.SourceSansBold
+
+    local textBox = Instance.new("TextBox", promptFrame)
+    textBox.Size = UDim2.new(1, -20, 0, 30)
+    textBox.Position = UDim2.new(0.5, -90, 0, 30)
+    textBox.Text = oldName
+    textBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    textBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    textBox.ClearTextOnFocus = false
+    local tbCorner = Instance.new("UICorner", textBox)
+    tbCorner.CornerRadius = UDim.new(0, 5)
+
+    local okButton = createButton(promptFrame, "OK", function()
+        callback(textBox.Text)
+        promptFrame:Destroy()
+    end)
+    okButton.Size = UDim2.new(0.5, -10, 0, 25)
+    okButton.Position = UDim2.new(0, 5, 1, -30)
+
+    local cancelButton = createButton(promptFrame, "Batal", function()
+        promptFrame:Destroy()
+    end)
+    cancelButton.Size = UDim2.new(0.5, -10, 0, 25)
+    cancelButton.Position = UDim2.new(0.5, 5, 1, -30)
+    cancelButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+end
+
+local function showImportPrompt(callback)
+    local promptFrame = Instance.new("Frame")
+    promptFrame.Size = UDim2.new(0, 220, 0, 150)
+    promptFrame.Position = UDim2.new(0.5, -110, 0.5, -75)
+    promptFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    promptFrame.BorderSizePixel = 0
+    promptFrame.ZIndex = 10
+    promptFrame.Parent = MainFrame
+
+    local corner = Instance.new("UICorner", promptFrame)
+    corner.CornerRadius = UDim.new(0, 8)
+    local stroke = Instance.new("UIStroke", promptFrame)
+    stroke.Color = Color3.fromRGB(0, 150, 255)
+    stroke.Thickness = 1
+
+    local title = Instance.new("TextLabel", promptFrame)
+    title.Size = UDim2.new(1, 0, 0, 20)
+    title.Text = "Impor Lokasi"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.BackgroundTransparency = 1
+    title.Font = Enum.Font.SourceSansBold
+
+    local textBox = Instance.new("TextBox", promptFrame)
+    textBox.Size = UDim2.new(1, -20, 1, -60)
+    textBox.Position = UDim2.new(0.5, -100, 0, 25)
+    textBox.Text = ""
+    textBox.PlaceholderText = "Tempel data di sini..."
+    textBox.MultiLine = true
+    textBox.TextXAlignment = Enum.TextXAlignment.Left
+    textBox.TextYAlignment = Enum.TextYAlignment.Top
+    textBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    textBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    local tbCorner = Instance.new("UICorner", textBox)
+    tbCorner.CornerRadius = UDim.new(0, 5)
+
+    local okButton = createButton(promptFrame, "Impor", function()
+        callback(textBox.Text)
+        promptFrame:Destroy()
+    end)
+    okButton.Size = UDim2.new(0.5, -10, 0, 25)
+    okButton.Position = UDim2.new(0, 5, 1, -30)
+
+    local cancelButton = createButton(promptFrame, "Batal", function()
+        promptFrame:Destroy()
+    end)
+    cancelButton.Size = UDim2.new(0.5, -10, 0, 25)
+    cancelButton.Position = UDim2.new(0.5, 5, 1, -30)
+    cancelButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+end
+
+local function addTeleportLocation(name, cframe)
+    for _, loc in pairs(savedTeleportLocations) do
+        if loc.Name == name then return end
+    end
+    
+    table.insert(savedTeleportLocations, {Name = name, CFrame = cframe})
+    table.sort(savedTeleportLocations, naturalCompare)
+    
+    saveTeleportData()
+    if updateTeleportList then
+        updateTeleportList()
+    end
+end
+
+updateTeleportList = function()
+    for _, child in pairs(TeleportTabContent:GetChildren()) do
+        if child.Name == "TeleportLocationFrame" then
             child:Destroy()
         end
     end
 
-    -- Filter dan buat tombol untuk pemain yang cocok
-    local numPlayersShown = 0
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            if CurrentPlayerFilter == "" or player.Name:lower():find(CurrentPlayerFilter:lower(), 1, true) or player.DisplayName:lower():find(CurrentPlayerFilter:lower(), 1, true) then
-                local button = createPlayerButton(player)
-                PlayerButtons[player.Name] = button
-                numPlayersShown = numPlayersShown + 1
-            end
-        end
-    end
+    for i, locData in ipairs(savedTeleportLocations) do
+        local locFrame = Instance.new("Frame")
+        locFrame.Name = "TeleportLocationFrame"
+        locFrame.Size = UDim2.new(1, 0, 0, 22)
+        locFrame.BackgroundTransparency = 1
+        locFrame.Parent = TeleportTabContent
+        locFrame.LayoutOrder = i + 4
+        locFrame.ZIndex = 2
 
-    -- Perbarui CanvasSize
-    PlayerListContainer.CanvasSize = UDim2.new(0, 0, 0, numPlayersShown * 45)
+        local tpButton = createButton(locFrame, locData.Name, function()
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                LocalPlayer.Character.HumanoidRootPart.CFrame = locData.CFrame * CFrame.new(0, 3, 0)
+            end
+        end)
+        tpButton.Size = UDim2.new(1, -50, 1, 0)
+        tpButton.TextSize = 10
+        tpButton.TextXAlignment = Enum.TextXAlignment.Left
+        local pad = Instance.new("UIPadding", tpButton); pad.PaddingLeft = UDim.new(0,5)
+
+        local renameButton = createButton(locFrame, "R", function()
+            showRenamePrompt(i, function(newName)
+                if newName and newName ~= "" and newName ~= savedTeleportLocations[i].Name then
+                    savedTeleportLocations[i].Name = newName
+                    table.sort(savedTeleportLocations, naturalCompare)
+                    saveTeleportData()
+                    updateTeleportList()
+                end
+            end)
+        end)
+        renameButton.Size = UDim2.new(0, 22, 1, 0)
+        renameButton.Position = UDim2.new(1, -47, 0, 0)
+        renameButton.TextSize = 10
+
+        local deleteButton = createButton(locFrame, "X", function()
+            table.remove(savedTeleportLocations, i)
+            saveTeleportData()
+            updateTeleportList()
+        end)
+        deleteButton.Size = UDim2.new(0, 22, 1, 0)
+        deleteButton.Position = UDim2.new(1, -22, 0, 0)
+        deleteButton.TextSize = 10
+        deleteButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    end
+    
+    local totalButtonsHeight = #TeleportTabContent:GetChildren() * 24
+    TeleportTabContent.CanvasSize = UDim2.new(0, 0, 0, totalButtonsHeight) 
 end
 
-Players.PlayerAdded:Connect(updatePlayerList)
-Players.PlayerRemoving:Connect(updatePlayerList)
+local function switchTab(tabName)
+    PlayerTabContent.Visible = (tabName == "Player")
+    GeneralTabContent.Visible = (tabName == "Umum")
+    CombatTabContent.Visible = (tabName == "Tempur")
+    TeleportTabContent.Visible = (tabName == "Teleport")
+    SettingsTabContent.Visible = (tabName == "Pengaturan")
+    if tabName == "Player" then updatePlayerList() end
+end
 
--- General tab UI elements
-createSlider(GeneralTabContent, "Kecepatan Jalan", 0, Settings.MaxWalkSpeed, Settings.WalkSpeed, "Kecepatan", 1, function(value)
-    Settings.WalkSpeed = value
-    if IsWalkSpeedEnabled then
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-            LocalPlayer.Character.Humanoid.WalkSpeed = value
-        end
+local function createTabButton(name, parent)
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.new(1, 0, 0, 25)
+    button.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    button.BorderSizePixel = 0
+    button.Text = name
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextSize = 12
+    button.Font = Enum.Font.SourceSansSemibold
+    button.Parent = parent
+    local buttonUICorner = Instance.new("UICorner", button)
+    buttonUICorner.CornerRadius = UDim.new(0, 5)
+    button.MouseButton1Click:Connect(function() switchTab(name) end)
+    return button
+end
+
+local PlayerTabButton = createTabButton("Player", TabsFrame)
+local GeneralTabButton = createTabButton("Umum", TabsFrame)
+local CombatTabButton = createTabButton("Tempur", TabsFrame)
+local TeleportTabButton = createTabButton("Teleport", TabsFrame)
+local SettingsTabButton = createTabButton("Pengaturan", TabsFrame)
+
+local function CreateFOVCircle()
+    if FOVPart then FOVPart:Destroy() end
+    FOVPart = Instance.new("Part", Workspace)
+    FOVPart.Name = "AimbotFOV"
+    FOVPart.Anchored = true
+    FOVPart.CanCollide = false
+    FOVPart.Transparency = 1
+    FOVPart.Size = Vector3.new(0.1, 0.1, 0.1)
+    local billboard = Instance.new("BillboardGui", FOVPart)
+    billboard.Name = "FOVGui"
+    billboard.Adornee = FOVPart
+    billboard.Size = UDim2.new(Settings.AimbotFOV * 2 / 50, 0, Settings.AimbotFOV * 2 / 50, 0)
+    billboard.AlwaysOnTop = true
+    local frame = Instance.new("Frame", billboard)
+    frame.Size = UDim2.new(1, 0, 1, 0)
+    frame.BackgroundTransparency = 1
+    frame.BorderSizePixel = 0
+    local uiStroke = Instance.new("UIStroke", frame)
+    uiStroke.Thickness = 2
+    uiStroke.Color = Color3.fromRGB(0, 200, 255)
+    uiStroke.Transparency = 0.2
+end
+
+local function UpdateFOVCircle()
+    if FOVPart and FOVPart:FindFirstChild("FOVGui") then
+        FOVPart.FOVGui.Size = UDim2.new(Settings.AimbotFOV * 2 / 50, 0, Settings.AimbotFOV * 2 / 50, 0)
     end
-end)
+end
 
-createToggle(GeneralTabContent, "Jalan", IsWalkSpeedEnabled, function(value)
-    IsWalkSpeedEnabled = value
-    ToggleWalkSpeed(value)
-end)
+local function StartFly()
+    if IsFlying then return end
+    local character = LocalPlayer.Character
+    if not (character and character:FindFirstChild("HumanoidRootPart") and character:FindFirstChildOfClass("Humanoid")) then return end
+    local root = character:WaitForChild("HumanoidRootPart")
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    IsFlying = true
+    humanoid.PlatformStand = true
+    local bodyGyro = Instance.new("BodyGyro", root)
+    bodyGyro.Name = "FlyGyro"; bodyGyro.P = 9e4; bodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9); bodyGyro.CFrame = root.CFrame
+    local bodyVelocity = Instance.new("BodyVelocity", root)
+    bodyVelocity.Name = "FlyVelocity"; bodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9); bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+    local controls = {F = 0, B = 0, L = 0, R = 0, Q = 0, E = 0}
+    table.insert(FlyConnections, UserInputService.InputBegan:Connect(function(input, processed) if processed then return end; if input.UserInputType == Enum.UserInputType.Keyboard then local key = input.KeyCode.Name:lower(); if key == "w" then controls.F = Settings.FlySpeed elseif key == "s" then controls.B = -Settings.FlySpeed elseif key == "a" then controls.L = -Settings.FlySpeed elseif key == "d" then controls.R = Settings.FlySpeed elseif key == "e" then controls.Q = Settings.FlySpeed * 2 elseif key == "q" then controls.E = -Settings.FlySpeed * 2 end; Workspace.CurrentCamera.CameraType = Enum.CameraType.Track end end))
+    table.insert(FlyConnections, UserInputService.InputEnded:Connect(function(input, processed) if processed then return end; if input.UserInputType == Enum.UserInputType.Keyboard then local key = input.KeyCode.Name:lower(); if key == "w" then controls.F = 0 elseif key == "s" then controls.B = 0 elseif key == "a" then controls.L = 0 elseif key == "d" then controls.R = 0 elseif key == "e" then controls.Q = 0 elseif key == "q" then controls.E = 0 end end end))
+    table.insert(FlyConnections, RunService.RenderStepped:Connect(function() if not IsFlying then return end; local speed = (controls.L + controls.R ~= 0 or controls.F + controls.B ~= 0 or controls.Q + controls.E ~= 0) and 50 or 0; local camera = Workspace.CurrentCamera; if speed ~= 0 then bodyVelocity.Velocity = ((camera.CFrame.LookVector * (controls.F + controls.B)) + ((camera.CFrame * CFrame.new(controls.L + controls.R, (controls.F + controls.B + controls.Q + controls.E) * 0.2, 0).Position) - camera.CFrame.Position)) * speed else bodyVelocity.Velocity = Vector3.new(0, 0, 0) end; bodyGyro.CFrame = camera.CFrame end))
+end
 
-createSlider(GeneralTabContent, "Kecepatan Terbang", 0, Settings.MaxFlySpeed, Settings.FlySpeed, "Kecepatan Terbang", 0.1, function(value)
-    Settings.FlySpeed = value
-end)
+local function StopFly()
+    if not IsFlying then return end; IsFlying = false
+    local character = LocalPlayer.Character
+    if character and character:FindFirstChildOfClass("Humanoid") then character.Humanoid.PlatformStand = false end
+    for _, conn in pairs(FlyConnections) do conn:Disconnect() end; FlyConnections = {}
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if root then if root:FindFirstChild("FlyGyro") then root.FlyGyro:Destroy() end; if root:FindFirstChild("FlyVelocity") then root.FlyVelocity:Destroy() end end
+    Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+end
 
-createToggle(GeneralTabContent, "Terbang", IsFlying, function(value)
-    if value then
-        if UserInputService.TouchEnabled then
-            StartMobileFly()
-        else
-            StartFly()
-        end
-    else
-        if UserInputService.TouchEnabled then
-            StopMobileFly()
-        else
-            StopFly()
-        end
+local function StartMobileFly()
+    if IsFlying then return end
+    local character = LocalPlayer.Character
+    if not (character and character:FindFirstChild("HumanoidRootPart") and character:FindFirstChildOfClass("Humanoid")) then return end
+    local root = character:WaitForChild("HumanoidRootPart")
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    IsFlying = true
+    humanoid.PlatformStand = true
+    local bodyVelocity = Instance.new("BodyVelocity", root)
+    bodyVelocity.Name = "FlyVelocity"; bodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9); bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+    local bodyGyro = Instance.new("BodyGyro", root)
+    bodyGyro.Name = "FlyGyro"; bodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9); bodyGyro.P = 1000; bodyGyro.D = 50
+    local controlModule = require(LocalPlayer.PlayerScripts:WaitForChild("PlayerModule"):WaitForChild("ControlModule"))
+    table.insert(FlyConnections, RunService.RenderStepped:Connect(function() if not IsFlying then return end; local camera = Workspace.CurrentCamera; if not (character and root and root:FindFirstChild("FlyVelocity") and root:FindFirstChild("FlyGyro")) then StopMobileFly(); return end; root.FlyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9); root.FlyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9); root.FlyGyro.CFrame = camera.CFrame; root.FlyVelocity.Velocity = Vector3.new(0, 0, 0); local direction = controlModule:GetMoveVector(); if direction.X ~= 0 then root.FlyVelocity.Velocity = root.FlyVelocity.Velocity + camera.CFrame.RightVector * (direction.X * (Settings.FlySpeed * 50)) end; if direction.Z ~= 0 then root.FlyVelocity.Velocity = root.FlyVelocity.Velocity - camera.CFrame.LookVector * (direction.Z * (Settings.FlySpeed * 50)) end end))
+    table.insert(FlyConnections, LocalPlayer.CharacterAdded:Connect(function() if IsFlying then task.wait(0.1); StartMobileFly() end end))
+end
+
+local function StopMobileFly()
+    if not IsFlying then return end; IsFlying = false
+    local character = LocalPlayer.Character
+    if character and character:FindFirstChildOfClass("Humanoid") then character.Humanoid.PlatformStand = false end
+    for _, conn in pairs(FlyConnections) do conn:Disconnect() end; FlyConnections = {}
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if root then if root:FindFirstChild("FlyGyro") then root.FlyGyro:Destroy() end; if root:FindFirstChild("FlyVelocity") then root.FlyVelocity:Destroy() end end
+    Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+end
+
+local function ToggleNoclip(enabled)
+    IsNoclipEnabled = enabled
+    if enabled then
+        task.spawn(function()
+            while IsNoclipEnabled and LocalPlayer.Character do
+                for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+                    if part:IsA("BasePart") and part.CanCollide then part.CanCollide = false end
+                end
+                task.wait(0.1)
+            end
+            if LocalPlayer.Character then
+                for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+                    if part:IsA("BasePart") then part.CanCollide = true end
+                end
+            end
+        end)
     end
-end)
+end
 
-createToggle(GeneralTabContent, "Noclip", IsNoclipEnabled, function(value)
-    ToggleNoclip(value)
-end)
+local function applyGodMode(character)
+    if not character then return end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
 
-createToggle(GeneralTabContent, "Infinity Jump", IsInfinityJumpEnabled, function(value)
-    IsInfinityJumpEnabled = value
-    local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-    if value then
-        if humanoid then
-            infinityJumpConnection = UserInputService.JumpRequest:Connect(function()
-                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-            end)
-        end
-    else
-        if infinityJumpConnection then
-            infinityJumpConnection:Disconnect()
-            infinityJumpConnection = nil
-        end
+    if godModeConnection then
+        godModeConnection:Disconnect()
+        godModeConnection = nil
     end
-end)
 
-createToggle(GeneralTabContent, "Fling on Touch", IsFlingOnTouchEnabled, function(value)
-    ToggleFlingOnTouch(value)
-end)
-
-createToggle(GeneralTabContent, "Anti-Fling", antifling_enabled, function(value)
-    ToggleAntiFling(value)
-end)
-
--- Combat tab UI elements
-createSlider(CombatTabContent, "Radius Aura Serang", 0, Settings.MaxKillAuraRadius, Settings.KillAuraRadius, "Studs", 1, function(value)
-    Settings.KillAuraRadius = value
-end)
-
-createSlider(CombatTabContent, "Kerusakan", 0, Settings.MaxKillAuraDamage, Settings.KillAuraDamage, "Kerusakan", 1, function(value)
-    Settings.KillAuraDamage = value
-end)
-
-createToggle(CombatTabContent, "Aura Serang", IsKillAuraEnabled, function(value)
-    ToggleKillAura(value)
-end)
-
-createSlider(CombatTabContent, "FOV Aimbot", 0, Settings.MaxAimbotFOV, Settings.AimbotFOV, "Piksel", 1, function(value)
-    Settings.AimbotFOV = value
-    UpdateFOVCircle()
-end)
-
-createDropdown(CombatTabContent, "Bagian Target Aimbot", {"Head", "HumanoidRootPart", "Torso", "UpperTorso", "LowerTorso"}, Settings.AimbotPart, function(value)
-    Settings.AimbotPart = value
-end)
-
-createToggle(CombatTabContent, "Aimbot", IsAimbotEnabled, function(value)
-    ToggleAimbot(value)
-end)
-
--- Teleport tab UI elements
-for name, position in pairs(MountainCheckpoints) do
-    createButton(TeleportTabContent, "Teleport ke " .. name, function()
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(position)
+    godModeConnection = humanoid.HealthChanged:Connect(function(newHealth)
+        if newHealth <= 0 and IsGodModeEnabled then
+            humanoid.Health = humanoid.MaxHealth
         end
     end)
 end
 
--- Settings tab UI elements
-createButton(SettingsTabContent, "Tutup Skrip", CloseScript)
-
--- Show/hide main GUI
-MiniToggleButton.MouseButton1Click:Connect(function()
-    if MainFrame.Visible then
-        MainFrame.Visible = false
-        MiniToggleButton.Text = "▼"
-        MiniToggleButton.BackgroundTransparency = 1
-    else
-        MainFrame.Visible = true
-        MiniToggleButton.Text = "▲"
-        MiniToggleButton.BackgroundTransparency = 0.5
-        updatePlayerList() -- Perbarui daftar pemain saat GUI dibuka
+local function ToggleGodMode(enabled)
+    IsGodModeEnabled = enabled
+    if enabled then
+        if LocalPlayer.Character then
+            applyGodMode(LocalPlayer.Character)
+        end
+    elseif godModeConnection then
+        godModeConnection:Disconnect()
+        godModeConnection = nil
     end
+end
+
+local function ToggleWalkSpeed(enabled)
+    IsWalkSpeedEnabled = enabled
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+        LocalPlayer.Character.Humanoid.WalkSpeed = enabled and Settings.WalkSpeed or OriginalWalkSpeed
+    end
+end
+
+local function CreateTouchFlingGUI()
+    if touchFlingGui and touchFlingGui.Parent then return end
+    local FlingScreenGui = Instance.new("ScreenGui")
+    FlingScreenGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    FlingScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    FlingScreenGui.ResetOnSpawn = false
+    touchFlingGui = FlingScreenGui
+
+    local Frame = Instance.new("Frame", FlingScreenGui)
+    Frame.BackgroundColor3 = Color3.fromRGB(170, 200, 255)
+    Frame.BackgroundTransparency = 0.3
+    Frame.BorderSizePixel = 0
+    Frame.Position = UDim2.new(0.5, -45, 0.5, -28)
+    Frame.Size = UDim2.new(0, 90, 0, 56)
+    Frame.Active = true
+    Frame.Draggable = true
+
+    local FrameUICorner = Instance.new("UICorner", Frame)
+    FrameUICorner.CornerRadius = UDim.new(0, 6)
+
+    local FrameUIStroke = Instance.new("UIStroke", Frame)
+    FrameUIStroke.Color = Color3.fromRGB(0, 100, 255)
+    FrameUIStroke.Thickness = 1.5
+    FrameUIStroke.Transparency = 0.2
+
+    local TitleBar = Instance.new("Frame", Frame)
+    TitleBar.BackgroundColor3 = Color3.fromRGB(140, 170, 235)
+    TitleBar.BackgroundTransparency = 0.4
+    TitleBar.BorderSizePixel = 0
+    TitleBar.Size = UDim2.new(1, 0, 0, 18)
+
+    local TitleLabel = Instance.new("TextLabel", TitleBar)
+    TitleLabel.BackgroundTransparency = 1.0
+    TitleLabel.Size = UDim2.new(1, -20, 1, 0)
+    TitleLabel.Position = UDim2.new(0, 5, 0, 0)
+    TitleLabel.Font = Enum.Font.SourceSansBold
+    TitleLabel.Text = "Touch Fling"
+    TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    TitleLabel.TextSize = 11
+    TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+    local OnOffButton = Instance.new("TextButton", Frame)
+    OnOffButton.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
+    OnOffButton.BorderSizePixel = 0
+    OnOffButton.Position = UDim2.new(0.5, -30, 0, 25)
+    OnOffButton.Size = UDim2.new(0, 60, 0, 22)
+    OnOffButton.Font = Enum.Font.SourceSansBold
+    OnOffButton.Text = "OFF"
+    OnOffButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    OnOffButton.TextSize = 14
+
+    local OnOffButtonCorner = Instance.new("UICorner", OnOffButton)
+    OnOffButtonCorner.CornerRadius = UDim.new(0, 5)
+    
+    local OnOffButtonGradient = Instance.new("UIGradient", OnOffButton)
+    OnOffButtonGradient.Color = ColorSequence.new(Color3.fromRGB(100, 180, 255), Color3.fromRGB(80, 150, 255))
+    OnOffButtonGradient.Rotation = 90
+
+    local CloseButton = Instance.new("TextButton", TitleBar)
+    CloseButton.Size = UDim2.new(0, 16, 0, 16)
+    CloseButton.Position = UDim2.new(1, -18, 0.5, -8)
+    CloseButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    CloseButton.Text = "X"
+    CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CloseButton.Font = Enum.Font.SourceSansBold
+    CloseButton.TextSize = 11
+    local corner = Instance.new("UICorner", CloseButton)
+    corner.CornerRadius = UDim.new(1, 0)
+
+    local hiddenfling = false
+    local flingThread = nil
+    
+    local function fling()
+        while hiddenfling do
+            local hrp = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local vel = hrp.Velocity
+                hrp.Velocity = vel * 10000 + Vector3.new(0, 10000, 0)
+                RunService.RenderStepped:Wait()
+                if hrp and hrp.Parent then hrp.Velocity = vel end
+                RunService.Stepped:Wait()
+                if hrp and hrp.Parent then hrp.Velocity = vel + Vector3.new(0, 0.1 * (math.random(0, 1) == 0 and -1 or 1), 0) end
+            end
+            RunService.Heartbeat:Wait()
+        end
+    end
+
+    OnOffButton.MouseButton1Click:Connect(function()
+        hiddenfling = not hiddenfling
+        OnOffButton.Text = hiddenfling and "ON" or "OFF"
+        if hiddenfling then
+            if not flingThread or coroutine.status(flingThread) == "dead" then
+                flingThread = coroutine.create(fling)
+                coroutine.resume(flingThread)
+            end
+        end
+    end)
+
+    CloseButton.MouseButton1Click:Connect(function()
+        hiddenfling = false
+        FlingScreenGui:Destroy()
+        touchFlingGui = nil
+    end)
+end
+
+local function ToggleKillAura(enabled)
+    IsKillAuraEnabled = enabled
+    if enabled then
+        KillAuraConnection = RunService.Heartbeat:Connect(function()
+            local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if not root then return end
+            for _, npc in pairs(Workspace:GetDescendants()) do
+                if npc:IsA("Model") and npc ~= LocalPlayer.Character and npc:FindFirstChildOfClass("Humanoid") and npc:FindFirstChild("HumanoidRootPart") then
+                    local humanoid = npc.Humanoid
+                    if humanoid.Health > 0 and (npc.HumanoidRootPart.Position - root.Position).Magnitude <= Settings.KillAuraRadius then
+                        humanoid:TakeDamage(Settings.KillAuraDamage)
+                    end
+                end
+            end
+        end)
+    elseif KillAuraConnection then
+        KillAuraConnection:Disconnect(); KillAuraConnection = nil
+    end
+end
+
+local function ToggleAimbot(enabled)
+    IsAimbotEnabled = enabled
+    if enabled then
+        CreateFOVCircle()
+        AimbotConnection = RunService.RenderStepped:Connect(function()
+            local camera = Workspace.CurrentCamera
+            local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if not (root and camera) then return end
+            local mousePos = UserInputService:GetMouseLocation()
+            local closestNPC, closestDistance = nil, Settings.AimbotFOV
+            for _, npc in pairs(Workspace:GetDescendants()) do
+                if npc:IsA("Model") and npc ~= LocalPlayer.Character and npc:FindFirstChildOfClass("Humanoid") and npc:FindFirstChild(Settings.AimbotPart) then
+                    local humanoid = npc.Humanoid
+                    if humanoid.Health > 0 then
+                        local screenPos, onScreen = camera:WorldToViewportPoint(npc[Settings.AimbotPart].Position)
+                        if onScreen then
+                            local distance = (mousePos - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
+                            if distance <= closestDistance then
+                                closestDistance, closestNPC = distance, npc
+                            end
+                        end
+                    end
+                end
+            end
+            AimbotTarget = closestNPC
+            if AimbotTarget and AimbotTarget:FindFirstChild(Settings.AimbotPart) then
+                camera.CFrame = CFrame.new(camera.CFrame.Position, AimbotTarget[Settings.AimbotPart].Position)
+                AimbotTarget.Humanoid:TakeDamage(Settings.KillAuraDamage)
+            end
+            if FOVPart then FOVPart.CFrame = CFrame.new(root.Position + Vector3.new(0, 2, 0)); FOVPart.FOVGui.Enabled = true end
+        end)
+    else
+        if AimbotConnection then AimbotConnection:Disconnect(); AimbotConnection = nil end
+        AimbotTarget = nil
+        if FOVPart then FOVPart:Destroy(); FOVPart = nil end
+    end
+end
+
+local function protect_character()
+	local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+	if root and antifling_enabled then
+		if root.Velocity.Magnitude <= antifling_velocity_threshold then antifling_last_safe_cframe = root.CFrame end
+		if root.Velocity.Magnitude > antifling_velocity_threshold and antifling_last_safe_cframe then root.Velocity, root.AssemblyLinearVelocity, root.AssemblyAngularVelocity, root.CFrame = Vector3.new(), Vector3.new(), Vector3.new(), antifling_last_safe_cframe end
+		if root.AssemblyAngularVelocity.Magnitude > antifling_angular_threshold then root.AssemblyAngularVelocity = Vector3.new() end
+		if LocalPlayer.Character.Humanoid:GetState() == Enum.HumanoidStateType.FallingDown then LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end
+	end
+end
+
+local function ToggleAntiFling(enabled)
+    antifling_enabled = enabled
+    if enabled and not antifling_connection then
+        antifling_connection = RunService.Heartbeat:Connect(protect_character)
+    elseif not enabled and antifling_connection then
+        antifling_connection:Disconnect(); antifling_connection = nil
+    end
+end
+
+local function ToggleAntiLag(enabled)
+    IsAntiLagEnabled = enabled
+    local currentSettings = settings()
+
+    if enabled then
+        if not OriginalGraphicsSettings.Technology then
+            OriginalGraphicsSettings.Technology = Lighting.Technology
+            OriginalGraphicsSettings.GlobalShadows = Lighting.GlobalShadows
+            OriginalGraphicsSettings.QualityLevel = currentSettings.Rendering.QualityLevel
+            OriginalGraphicsSettings.MaterialQuality = MaterialService.MaterialQuality
+            OriginalGraphicsSettings.Descendants = {}
+            for _, v in pairs(Lighting:GetDescendants()) do
+                if v:IsA("PostEffect") then
+                    OriginalGraphicsSettings.Descendants[v] = v.Enabled
+                end
+            end
+            if Workspace:FindFirstChild("Terrain") then
+                 OriginalGraphicsSettings.Decoration = Workspace.Terrain.Decoration
+                 OriginalGraphicsSettings.WaterWaveSize = Workspace.Terrain.WaterWaveSize
+                 OriginalGraphicsSettings.WaterWaveSpeed = Workspace.Terrain.WaterWaveSpeed
+                 OriginalGraphicsSettings.WaterReflectance = Workspace.Terrain.WaterReflectance
+            end
+        end
+
+        Lighting.Technology = Enum.Technology.Compatibility
+        Lighting.GlobalShadows = false
+        currentSettings.Rendering.QualityLevel = Enum.QualityLevel.Level01
+        MaterialService.MaterialQuality = Enum.MaterialQuality.Low
+        
+        for _, v in pairs(Lighting:GetDescendants()) do
+            if v:IsA("PostEffect") then
+                v.Enabled = false
+            end
+        end
+
+        if Workspace:FindFirstChild("Terrain") then
+            Workspace.Terrain.Decoration = false
+            Workspace.Terrain.WaterWaveSize = 0
+            Workspace.Terrain.WaterWaveSpeed = 0
+            Workspace.Terrain.WaterReflectance = 0
+        end
+
+    else
+        if OriginalGraphicsSettings.Technology then
+            Lighting.Technology = OriginalGraphicsSettings.Technology
+            Lighting.GlobalShadows = OriginalGraphicsSettings.GlobalShadows
+            currentSettings.Rendering.QualityLevel = OriginalGraphicsSettings.QualityLevel
+            MaterialService.MaterialQuality = OriginalGraphicsSettings.MaterialQuality
+            
+            for v, originalState in pairs(OriginalGraphicsSettings.Descendants) do
+                if v and v.Parent then
+                    v.Enabled = originalState
+                end
+            end
+            
+            if Workspace:FindFirstChild("Terrain") then
+                 if OriginalGraphicsSettings.Decoration ~= nil then Workspace.Terrain.Decoration = OriginalGraphicsSettings.Decoration end
+                 if OriginalGraphicsSettings.WaterWaveSize ~= nil then Workspace.Terrain.WaterWaveSize = OriginalGraphicsSettings.WaterWaveSize end
+                 if OriginalGraphicsSettings.WaterWaveSpeed ~= nil then Workspace.Terrain.WaterWaveSpeed = OriginalGraphicsSettings.WaterWaveSpeed end
+                 if OriginalGraphicsSettings.WaterReflectance ~= nil then Workspace.Terrain.WaterReflectance = OriginalGraphicsSettings.WaterReflectance end
+            end
+
+            OriginalGraphicsSettings = {}
+        end
+    end
+end
+
+local function DisableAllFeatures()
+    if IsFlying then if UserInputService.TouchEnabled then StopMobileFly() else StopFly() end end
+    if IsWalkSpeedEnabled then ToggleWalkSpeed(false) end
+    if IsNoclipEnabled then ToggleNoclip(false) end
+    if IsGodModeEnabled then ToggleGodMode(false) end 
+    if IsKillAuraEnabled then ToggleKillAura(false) end
+    if IsAimbotEnabled then ToggleAimbot(false) end
+    if IsInfinityJumpEnabled then IsInfinityJumpEnabled = false; if infinityJumpConnection then infinityJumpConnection:Disconnect(); infinityJumpConnection = nil end end
+    if antifling_enabled then ToggleAntiFling(false) end
+    if IsAntiLagEnabled then ToggleAntiLag(false) end
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then LocalPlayer.Character.Humanoid.WalkSpeed = OriginalWalkSpeed end
+end
+
+local function CloseScript()
+    DisableAllFeatures()
+    ScreenGui:Destroy()
+	if touchFlingGui and touchFlingGui.Parent then touchFlingGui:Destroy() end
+    if script then script:Destroy() end
+end
+
+LocalPlayer.CharacterAdded:Connect(function(character)
+    task.wait(0.1)
+    if character:FindFirstChildOfClass("Humanoid") then
+        character.Humanoid.WalkSpeed = IsWalkSpeedEnabled and Settings.WalkSpeed or OriginalWalkSpeed
+    end
+    if antifling_enabled then ToggleAntiFling(true) end
+    if IsGodModeEnabled then applyGodMode(character) end 
 end)
 
--- Toggle fly with F key
-UserInputService.InputBegan:Connect(function(input, processed)
-    if processed then return end
-    if input.KeyCode == Enum.KeyCode.F then
-        if not UserInputService.TouchEnabled then
-            if not IsFlying then
-                StartFly()
-            else
-                StopFly()
+local function createSlider(parent, name, min, max, current, suffix, increment, callback)
+    local sliderFrame = Instance.new("Frame", parent); sliderFrame.Size = UDim2.new(1, 0, 0, 50); sliderFrame.BackgroundTransparency = 1
+    local titleLabel = Instance.new("TextLabel", sliderFrame); titleLabel.Size = UDim2.new(1, 0, 0, 15); titleLabel.BackgroundTransparency = 1; titleLabel.TextColor3 = Color3.fromRGB(200, 200, 200); titleLabel.TextSize = 12; titleLabel.TextXAlignment = Enum.TextXAlignment.Left; titleLabel.Text = name .. ": " .. tostring(math.floor(current * 10) / 10) .. " " .. suffix; titleLabel.Font = Enum.Font.SourceSans
+    local sliderBase = Instance.new("Frame", sliderFrame); sliderBase.Name = "SliderBase"; sliderBase.Size = UDim2.new(1, 0, 0, 10); sliderBase.Position = UDim2.new(0, 0, 0, 25); sliderBase.BackgroundColor3 = Color3.fromRGB(35, 35, 35); sliderBase.BorderSizePixel = 0; local sbCorner = Instance.new("UICorner", sliderBase); sbCorner.CornerRadius = UDim.new(0, 5)
+    local sliderFill = Instance.new("Frame", sliderBase); sliderFill.Name = "SliderFill"; local fillWidth = (current - min) / (max - min); sliderFill.Size = UDim2.new(fillWidth, 0, 1, 0); sliderFill.BackgroundColor3 = Color3.fromRGB(0, 150, 255); sliderFill.BorderSizePixel = 0; local sfCorner = Instance.new("UICorner", sliderFill); sfCorner.CornerRadius = UDim.new(0, 5)
+    local sliderThumb = Instance.new("Frame", sliderBase); sliderThumb.Name = "SliderThumb"; sliderThumb.Size = UDim2.new(0, 15, 0, 25); sliderThumb.Position = UDim2.new(fillWidth, -7.5, 0.5, -12.5); sliderThumb.BackgroundColor3 = Color3.fromRGB(0, 200, 255); sliderThumb.BorderSizePixel = 0; local stCorner = Instance.new("UICorner", sliderThumb); stCorner.CornerRadius = UDim.new(0, 5); local stStroke = Instance.new("UIStroke", sliderThumb); stStroke.Color = Color3.fromRGB(255, 255, 255); stStroke.Thickness = 1; stStroke.Transparency = 0.8
+    local isDraggingSlider = false
+    local function updateSlider(input) local pos = input.Position.X - sliderBase.AbsolutePosition.X; local newWidth = math.min(math.max(pos, 0), sliderBase.AbsoluteSize.X); local newValue = min + (newWidth / sliderBase.AbsoluteSize.X) * (max - min); newValue = math.floor(newValue / increment) * increment; local newFillWidth = (newValue - min) / (max - min); sliderFill.Size = UDim2.new(newFillWidth, 0, 1, 0); sliderThumb.Position = UDim2.new(newFillWidth, -7.5, 0.5, -12.5); titleLabel.Text = name .. ": " .. tostring(math.floor(newValue * 10) / 10) .. " " .. suffix; callback(newValue) end
+    sliderBase.InputBegan:Connect(function(input, processed) if processed then return end; if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then isDraggingSlider = true; updateSlider(input) end end)
+    sliderBase.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then isDraggingSlider = false end end)
+    UserInputService.InputChanged:Connect(function(input) if isDraggingSlider then updateSlider(input) end end)
+    return sliderFrame
+end
+
+local function createToggle(parent, name, initialState, callback)
+    local toggleFrame = Instance.new("Frame", parent); toggleFrame.Size = UDim2.new(1, 0, 0, 25); toggleFrame.BackgroundTransparency = 1
+    local toggleLabel = Instance.new("TextLabel", toggleFrame); toggleLabel.Size = UDim2.new(0.8, -10, 1, 0); toggleLabel.Position = UDim2.new(0, 5, 0, 0); toggleLabel.BackgroundTransparency = 1; toggleLabel.Text = name; toggleLabel.TextColor3 = Color3.fromRGB(255, 255, 255); toggleLabel.TextSize = 12; toggleLabel.TextXAlignment = Enum.TextXAlignment.Left; toggleLabel.Font = Enum.Font.SourceSans
+    local switch = Instance.new("TextButton", toggleFrame); switch.Name = "Switch"; switch.Size = UDim2.new(0, 40, 0, 20); switch.Position = UDim2.new(1, -50, 0.5, -10); switch.BackgroundColor3 = Color3.fromRGB(50, 50, 50); switch.BorderSizePixel = 0; switch.Text = ""; local switchCorner = Instance.new("UICorner", switch); switchCorner.CornerRadius = UDim.new(1, 0)
+    local thumb = Instance.new("Frame", switch); thumb.Name = "Thumb"; thumb.Size = UDim2.new(0, 16, 0, 16); thumb.Position = UDim2.new(0, 2, 0.5, -8); thumb.BackgroundColor3 = Color3.fromRGB(220, 220, 220); thumb.BorderSizePixel = 0; local thumbCorner = Instance.new("UICorner", thumb); thumbCorner.CornerRadius = UDim.new(1, 0)
+    local onColor, offColor = Color3.fromRGB(0, 150, 255), Color3.fromRGB(60, 60, 60)
+    local onPosition, offPosition = UDim2.new(1, -18, 0.5, -8), UDim2.new(0, 2, 0.5, -8)
+    local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+    local isToggled = initialState
+    local function updateVisuals(isInstant) local goalPosition, goalColor = isToggled and onPosition or offPosition, isToggled and onColor or offColor; if isInstant then thumb.Position, switch.BackgroundColor3 = goalPosition, goalColor else TweenService:Create(thumb, tweenInfo, {Position = goalPosition}):Play(); TweenService:Create(switch, tweenInfo, {BackgroundColor3 = goalColor}):Play() end end
+    switch.MouseButton1Click:Connect(function() isToggled = not isToggled; updateVisuals(false); callback(isToggled) end)
+    updateVisuals(true)
+    return toggleFrame, switch
+end
+
+local function createDropdown(parent, name, options, current, callback)
+    local dropdownFrame = Instance.new("Frame", parent); dropdownFrame.Size = UDim2.new(1, 0, 0, 50); dropdownFrame.BackgroundTransparency = 1
+    local label = Instance.new("TextLabel", dropdownFrame); label.Size = UDim2.new(1, 0, 0, 20); label.BackgroundTransparency = 1; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = name .. ": " .. current; label.TextColor3 = Color3.fromRGB(255, 255, 255); label.TextSize = 12; label.Font = Enum.Font.SourceSans
+    local optionButton = Instance.new("TextButton", dropdownFrame); optionButton.Size = UDim2.new(1, 0, 0, 25); optionButton.Position = UDim2.new(0, 0, 0, 25); optionButton.BackgroundColor3 = Color3.fromRGB(0, 150, 255); optionButton.BorderSizePixel = 0; optionButton.Text = "Ubah Target"; optionButton.TextColor3 = Color3.fromRGB(255, 255, 255); optionButton.TextSize = 12; optionButton.Font = Enum.Font.SourceSans; local btnCorner = Instance.new("UICorner", optionButton); btnCorner.CornerRadius = UDim.new(0, 5)
+    local currentIndex = 1; optionButton.MouseButton1Click:Connect(function() currentIndex = currentIndex + 1; if currentIndex > #options then currentIndex = 1 end; local newOption = options[currentIndex]; label.Text = name .. ": " .. newOption; callback(newOption) end)
+    return dropdownFrame
+end
+
+local playerHeaderFrame = Instance.new("Frame", PlayerTabContent); playerHeaderFrame.Size = UDim2.new(1, 0, 0, 55); playerHeaderFrame.BackgroundTransparency = 1
+local playerCountLabel = Instance.new("TextLabel", playerHeaderFrame); playerCountLabel.Name = "PlayerCountLabel"; playerCountLabel.Size = UDim2.new(1, 0, 0, 15); playerCountLabel.BackgroundTransparency = 1; playerCountLabel.Text = "Pemain Online: " .. #Players:GetPlayers(); playerCountLabel.TextColor3 = Color3.fromRGB(255, 255, 255); playerCountLabel.TextSize = 12; playerCountLabel.TextXAlignment = Enum.TextXAlignment.Left; playerCountLabel.Font = Enum.Font.SourceSansBold
+local searchFrame = Instance.new("Frame", playerHeaderFrame); searchFrame.Size = UDim2.new(1, 0, 0, 25); searchFrame.Position = UDim2.new(0, 0, 0, 20); searchFrame.BackgroundTransparency = 1
+local searchTextBox = Instance.new("TextBox", searchFrame); searchTextBox.Size = UDim2.new(0.7, -10, 1, 0); searchTextBox.Position = UDim2.new(0, 5, 0, 0); searchTextBox.BackgroundColor3 = Color3.fromRGB(35, 35, 35); searchTextBox.TextColor3 = Color3.fromRGB(200, 200, 200); searchTextBox.Text = "Cari Pemain..."; searchTextBox.PlaceholderText = "Cari Pemain..."; searchTextBox.TextSize = 12; searchTextBox.Font = Enum.Font.SourceSans; searchTextBox.ClearTextOnFocus = true; local sboxCorner = Instance.new("UICorner", searchTextBox); sboxCorner.CornerRadius = UDim.new(0, 5)
+local searchButton = Instance.new("TextButton", searchFrame); searchButton.Size = UDim2.new(0.3, 0, 1, 0); searchButton.Position = UDim2.new(0.7, 0, 0, 0); searchButton.BackgroundColor3 = Color3.fromRGB(0, 150, 255); searchButton.BorderSizePixel = 0; searchButton.Text = "Cari"; searchButton.TextColor3 = Color3.fromRGB(255, 255, 255); searchButton.TextSize = 12; searchButton.Font = Enum.Font.SourceSansBold; local sbtnCorner = Instance.new("UICorner", searchButton); sbtnCorner.CornerRadius = UDim.new(0, 5)
+searchTextBox.FocusLost:Connect(function() CurrentPlayerFilter = searchTextBox.Text; updatePlayerList() end)
+searchButton.MouseButton1Click:Connect(function() CurrentPlayerFilter = searchTextBox.Text; updatePlayerList() end)
+
+local function createPlayerButton(player)
+    local playerFrame = Instance.new("Frame", PlayerListContainer)
+    playerFrame.Size = UDim2.new(1, 0, 0, 35)
+    playerFrame.BackgroundTransparency = 1
+    playerFrame.Name = player.Name
+    
+    local avatarImage = Instance.new("ImageLabel", playerFrame)
+    avatarImage.Size = UDim2.new(0, 25, 0, 25)
+    avatarImage.Position = UDim2.new(0, 5, 0.5, -12.5)
+    avatarImage.BackgroundTransparency = 1
+    
+	local success, result = pcall(function()
+		avatarImage.Image = Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420)
+	end)
+	if not success then warn("Gagal memuat thumbnail untuk", player.Name) end
+
+    local displaynameLabel = Instance.new("TextLabel", playerFrame)
+    displaynameLabel.Size = UDim2.new(0.6, -20, 0, 15)
+    displaynameLabel.Position = UDim2.new(0, 35, 0, 2)
+    displaynameLabel.BackgroundTransparency = 1
+    displaynameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    displaynameLabel.Text = player.DisplayName
+    displaynameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    displaynameLabel.TextSize = 11
+    displaynameLabel.Font = Enum.Font.SourceSansSemibold
+    
+    local usernameLabel = Instance.new("TextLabel", playerFrame)
+    usernameLabel.Size = UDim2.new(0.6, -20, 0, 15)
+    usernameLabel.Position = UDim2.new(0, 35, 0, 16)
+    usernameLabel.BackgroundTransparency = 1
+    usernameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    usernameLabel.Text = "@" .. player.Name
+    usernameLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+    usernameLabel.TextSize = 9
+    usernameLabel.Font = Enum.Font.SourceSans
+    
+    local distanceLabel = Instance.new("TextLabel", playerFrame)
+    distanceLabel.Name = "DistanceLabel"
+    distanceLabel.Size = UDim2.new(0, 40, 0, 20)
+    distanceLabel.Position = UDim2.new(1, -90, 0.5, -10)
+    distanceLabel.BackgroundTransparency = 1
+    distanceLabel.TextXAlignment = Enum.TextXAlignment.Right
+    distanceLabel.TextColor3 = Color3.fromRGB(0, 255, 127)
+    distanceLabel.TextSize = 10
+    distanceLabel.Font = Enum.Font.SourceSansSemibold
+    
+    local teleportButton = createButton(playerFrame, "TP", function() 
+        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then 
+            LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(player.Character.HumanoidRootPart.Position) 
+        end 
+    end)
+    teleportButton.Size = UDim2.new(0, 40, 0, 20)
+    teleportButton.Position = UDim2.new(1, -45, 0.5, -10)
+    teleportButton.TextSize = 10
+    
+    return playerFrame
+end
+
+function updatePlayerList()
+    if not PlayerListContainer.Parent then return end
+    playerCountLabel.Text = "Pemain Online: " .. #Players:GetPlayers()
+    local playersToShow = {}
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and (CurrentPlayerFilter == "" or player.Name:lower():find(CurrentPlayerFilter:lower(), 1, true) or player.DisplayName:lower():find(CurrentPlayerFilter:lower(), 1, true)) then
+            table.insert(playersToShow, player)
+        end
+    end
+    for _, child in pairs(PlayerListContainer:GetChildren()) do if child:IsA("Frame") and child.Parent == PlayerListContainer then child:Destroy() end end
+    for i, player in ipairs(playersToShow) do
+        local button = createPlayerButton(player)
+        button.LayoutOrder = i
+        local distLabel = button and button:FindFirstChild("DistanceLabel")
+        if distLabel then
+            local localHRP = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            local targetHRP = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+            distLabel.Text = (localHRP and targetHRP) and tostring(math.floor((localHRP.Position - targetHRP.Position).Magnitude)) .. "m" or "..."
+        end
+    end
+    PlayerListContainer.CanvasSize = UDim2.new(0, 0, 0, #playersToShow * 40)
+end
+
+task.spawn(function() while task.wait(1) do if MainFrame.Visible and PlayerTabContent.Visible then updatePlayerList() end end end)
+Players.PlayerAdded:Connect(function() task.wait(0.5); if MainFrame.Visible and PlayerTabContent.Visible then updatePlayerList() end end)
+Players.PlayerRemoving:Connect(function() task.wait(0.5); if MainFrame.Visible and PlayerTabContent.Visible then updatePlayerList() end end)
+
+-- General tab
+createSlider(GeneralTabContent, "Kecepatan Jalan", 0, Settings.MaxWalkSpeed, Settings.WalkSpeed, "", 1, function(v) Settings.WalkSpeed = v; if IsWalkSpeedEnabled and LocalPlayer.Character and LocalPlayer.Character.Humanoid then LocalPlayer.Character.Humanoid.WalkSpeed = v end end)
+createToggle(GeneralTabContent, "Jalan Cepat", IsWalkSpeedEnabled, function(v) IsWalkSpeedEnabled = v; ToggleWalkSpeed(v) end)
+createSlider(GeneralTabContent, "Kecepatan Terbang", 0, Settings.MaxFlySpeed, Settings.FlySpeed, "", 0.1, function(v) Settings.FlySpeed = v end)
+createToggle(GeneralTabContent, "Terbang", IsFlying, function(v) if v then if UserInputService.TouchEnabled then StartMobileFly() else StartFly() end else if UserInputService.TouchEnabled then StopMobileFly() else StopFly() end end end)
+createToggle(GeneralTabContent, "Noclip", IsNoclipEnabled, function(v) ToggleNoclip(v) end)
+createToggle(GeneralTabContent, "Infinity Jump", IsInfinityJumpEnabled, function(v) IsInfinityJumpEnabled = v; if v then if LocalPlayer.Character and LocalPlayer.Character.Humanoid then infinityJumpConnection = UserInputService.JumpRequest:Connect(function() LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end) end elseif infinityJumpConnection then infinityJumpConnection:Disconnect(); infinityJumpConnection = nil end end)
+createToggle(GeneralTabContent, "Mode Kebal", IsGodModeEnabled, ToggleGodMode) 
+createButton(GeneralTabContent, "Buka Touch Fling", CreateTouchFlingGUI)
+createToggle(GeneralTabContent, "Anti-Fling", antifling_enabled, ToggleAntiFling)
+createToggle(GeneralTabContent, "Anti Lag", IsAntiLagEnabled, ToggleAntiLag)
+
+-- Combat tab
+createSlider(CombatTabContent, "Radius Aura Serang", 0, Settings.MaxKillAuraRadius, Settings.KillAuraRadius, "Studs", 1, function(v) Settings.KillAuraRadius = v end)
+createSlider(CombatTabContent, "Kerusakan", 0, Settings.MaxKillAuraDamage, Settings.KillAuraDamage, "HP", 1, function(v) Settings.KillAuraDamage = v end)
+createToggle(CombatTabContent, "Aura Serang", IsKillAuraEnabled, ToggleKillAura)
+createSlider(CombatTabContent, "FOV Aimbot", 0, Settings.MaxAimbotFOV, Settings.AimbotFOV, "Piksel", 1, function(v) Settings.AimbotFOV = v; UpdateFOVCircle() end)
+createDropdown(CombatTabContent, "Target Aimbot", {"Head", "HumanoidRootPart", "Torso"}, Settings.AimbotPart, function(v) Settings.AimbotPart = v end)
+createToggle(CombatTabContent, "Aimbot", IsAimbotEnabled, ToggleAimbot)
+
+-- Teleport tab
+createButton(TeleportTabContent, "Pindai Ulang Map", function()
+    for _, part in pairs(Workspace:GetDescendants()) do
+        if part:IsA("BasePart") then
+            local nameLower = part.Name:lower()
+            if (nameLower:find("checkpoint") or nameLower:find("pos") or nameLower:find("finish") or nameLower:find("start")) and not Players:GetPlayerFromCharacter(part.Parent) then
+                 addTeleportLocation(part.Name, part.CFrame)
             end
         end
     end
+end).LayoutOrder = 1
+createButton(TeleportTabContent, "Simpan Lokasi Saat Ini", function()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local newName = "Kustom " .. (#savedTeleportLocations + 1)
+        addTeleportLocation(newName, LocalPlayer.Character.HumanoidRootPart.CFrame)
+    end
+end).LayoutOrder = 2
+
+createButton(TeleportTabContent, "Ekspor Semua", function()
+    if not setclipboard then
+        showNotification("Executor tidak mendukung clipboard!", Color3.fromRGB(200, 50, 50))
+        return
+    end
+    local dataToExport = {}
+    for _, loc in ipairs(savedTeleportLocations) do
+        table.insert(dataToExport, { Name = loc.Name, CFrameData = {loc.CFrame:GetComponents()} })
+    end
+    local success, result = pcall(function()
+        local jsonData = HttpService:JSONEncode(dataToExport)
+        setclipboard(jsonData)
+        showNotification("Data disalin ke clipboard!", Color3.fromRGB(50, 200, 50))
+    end)
+    if not success then
+        showNotification("Gagal mengekspor data!", Color3.fromRGB(200, 50, 50))
+    end
+end).LayoutOrder = 3
+
+createButton(TeleportTabContent, "Impor Semua", function()
+    showImportPrompt(function(text)
+        if not text or text == "" then return end
+        local success, decodedData = pcall(HttpService.JSONDecode, HttpService, text)
+        if not success or type(decodedData) ~= "table" then
+            showNotification("Data impor tidak valid!", Color3.fromRGB(200, 50, 50))
+            return
+        end
+        
+        local existingNames = {}
+        for _, loc in ipairs(savedTeleportLocations) do
+            existingNames[loc.Name] = true
+        end
+
+        local importedCount = 0
+        for _, data in ipairs(decodedData) do
+            if type(data) == "table" and data.Name and data.CFrameData and not existingNames[data.Name] then
+                local cframe = CFrame.new(unpack(data.CFrameData))
+                table.insert(savedTeleportLocations, { Name = data.Name, CFrame = cframe })
+                existingNames[data.Name] = true
+                importedCount = importedCount + 1
+            end
+        end
+        
+        if importedCount > 0 then
+            table.sort(savedTeleportLocations, naturalCompare)
+            saveTeleportData()
+            updateTeleportList()
+            showNotification(importedCount .. " lokasi berhasil diimpor!", Color3.fromRGB(50, 200, 50))
+        else
+            showNotification("Tidak ada lokasi baru untuk diimpor.", Color3.fromRGB(200, 150, 50))
+        end
+    end)
+end).LayoutOrder = 4
+
+-- Settings tab
+createButton(SettingsTabContent, "Tutup Skrip", CloseScript)
+
+-- =================================================================================
+-- == FUNGSI UNTUK MEMBUAT GUI DAPAT DIGESER (DRAGGABLE)                          ==
+-- =================================================================================
+-- Fungsi ini dirancang untuk membuat elemen GUI (seperti jendela atau tombol)
+-- dapat dipindahkan dengan bebas di layar menggunakan mouse atau sentuhan.
+-- Fungsi ini juga cerdas untuk membedakan antara aksi 'menggeser' (drag)
+-- dan 'mengklik' (click) agar tidak terjadi tumpang tindih fungsi.
+
+local function MakeDraggable(guiObject, dragHandle)
+    -- guiObject: Elemen yang akan digerakkan (misal: MainFrame).
+    -- dragHandle: Bagian dari guiObject yang akan di-klik untuk menggeser (misal: TitleBar).
+    -- Untuk tombol segitiga, guiObject dan dragHandle adalah elemen yang sama.
+
+    local isDragging = false      -- Status untuk melacak apakah sedang digeser.
+    local dragStartMousePos = nil -- Posisi awal mouse/jari saat mulai menekan.
+    local startObjectPos = nil    -- Posisi awal GUI saat mulai menekan.
+    local inputChangedConnection  -- Koneksi untuk memantau pergerakan input.
+
+    -- Jarak minimum (dalam piksel) pergerakan mouse/jari sebelum dianggap sebagai 'geseran'.
+    -- Ini mencegah klik biasa dianggap sebagai geseran kecil.
+    local DRAG_THRESHOLD = 5
+
+    -- Terhubung ke event saat mouse/jari mulai menekan 'dragHandle'.
+    dragHandle.InputBegan:Connect(function(input)
+        -- Hanya proses input dari klik kiri mouse atau sentuhan layar.
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+
+            -- Set status awal.
+            isDragging = false -- Awalnya, kita anggap ini BUKAN geseran, mungkin hanya klik.
+            dragStartMousePos = input.Position -- Simpan posisi awal input.
+            startObjectPos = guiObject.Position -- Simpan posisi awal GUI.
+
+            -- Buat koneksi untuk memantau pergerakan mouse/jari SELAMA tombol ditekan.
+            inputChangedConnection = UserInputService.InputChanged:Connect(function(changedInput)
+                -- Pastikan kita memproses tipe input yang sama (mouse atau sentuhan).
+                if changedInput.UserInputType == input.UserInputType then
+                    local currentPos = changedInput.Position
+                    local delta = currentPos - dragStartMousePos -- Hitung perbedaan posisi.
+
+                    -- Jika belum dianggap menggeser DAN pergerakan sudah melebihi ambang batas,
+                    -- maka kita sahkan ini sebagai aksi 'menggeser'.
+                    if not isDragging and delta.Magnitude > DRAG_THRESHOLD then
+                        isDragging = true
+                    end
+
+                    -- Jika statusnya adalah 'menggeser', perbarui posisi GUI secara real-time.
+                    if isDragging then
+                        -- Posisi baru dihitung dari posisi awal GUI ditambah pergerakan mouse/jari.
+                        guiObject.Position = UDim2.new(
+                            startObjectPos.X.Scale, startObjectPos.X.Offset + delta.X,
+                            startObjectPos.Y.Scale, startObjectPos.Y.Offset + delta.Y
+                        )
+                    end
+                end
+            end)
+        end
+    end)
+
+    -- Terhubung ke event saat mouse/jari dilepaskan.
+    dragHandle.InputEnded:Connect(function(input)
+        -- Hanya proses akhir dari klik kiri mouse atau sentuhan layar.
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+
+            -- Hentikan pemantauan pergerakan karena input sudah selesai.
+            if inputChangedConnection then
+                inputChangedConnection:Disconnect()
+                inputChangedConnection = nil
+            end
+
+            -- Ini adalah bagian PENTING untuk membedakan klik dan geser.
+            -- Jika 'dragHandle' adalah tombol segitiga DAN status 'isDragging' adalah false,
+            -- itu artinya ini adalah sebuah KLIK biasa, bukan geseran.
+            if dragHandle == MiniToggleButton and not isDragging then
+                -- Jalankan fungsi asli dari tombol: membuka/menutup jendela utama.
+                MainFrame.Visible = not MainFrame.Visible
+                MiniToggleButton.Text = MainFrame.Visible and "⫷" or "⫸"
+                MiniToggleButton.BackgroundTransparency = MainFrame.Visible and 0.5 or 1
+
+                if MainFrame.Visible then
+                    -- Logika tambahan saat jendela dibuka.
+                    if not (PlayerTabContent.Visible or GeneralTabContent.Visible or CombatTabContent.Visible or TeleportTabContent.Visible or SettingsTabContent.Visible) then
+                        switchTab("Player")
+                    end
+                    if PlayerTabContent.Visible then
+                        updatePlayerList()
+                    end
+                end
+            end
+
+            -- Reset status untuk aksi berikutnya.
+            isDragging = false
+        end
+    end)
+end
+
+-- Terapkan fungsi geser ke Jendela Utama (dipegang dari TitleBar) dan Tombol Segitiga.
+MakeDraggable(MainFrame, TitleBar)
+MakeDraggable(MiniToggleButton, MiniToggleButton)
+
+
+-- Toggle fly with F key
+UserInputService.InputBegan:Connect(function(input, processed) 
+    if processed then return end
+    if input.KeyCode == Enum.KeyCode.F and not UserInputService.TouchEnabled then 
+        if not IsFlying then 
+            StartFly() 
+        else 
+            StopFly() 
+        end 
+    end 
 end)
 
--- Panggil updatePlayerList saat skrip pertama kali dijalankan
+-- INISIALISASI
+loadTeleportData()
+switchTab("Player")
 updatePlayerList()
+if LocalPlayer.Character then
+    if IsGodModeEnabled then applyGodMode(LocalPlayer.Character) end
+end
