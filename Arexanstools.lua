@@ -77,7 +77,7 @@ MiniToggleButton.Position = UDim2.new(1, -25, 0.5, -7.5)
 MiniToggleButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 MiniToggleButton.BackgroundTransparency = 1
 MiniToggleButton.BorderSizePixel = 0
-MiniToggleButton.Text = "⫷"
+MiniToggleButton.Text = "◀"
 MiniToggleButton.TextColor3 = Color3.fromRGB(0, 200, 255)
 MiniToggleButton.TextSize = 10
 MiniToggleButton.Font = Enum.Font.SourceSansBold
@@ -1321,7 +1321,7 @@ local function MakeDraggable(guiObject, dragHandle)
             if dragHandle == MiniToggleButton and not isDragging then
                 -- Jalankan fungsi asli dari tombol: membuka/menutup jendela utama.
                 MainFrame.Visible = not MainFrame.Visible
-                MiniToggleButton.Text = MainFrame.Visible and "⫷" or "⫸"
+                MiniToggleButton.Text = MainFrame.Visible and "◀" or "▶"
                 MiniToggleButton.BackgroundTransparency = MainFrame.Visible and 0.5 or 1
 
                 if MainFrame.Visible then
