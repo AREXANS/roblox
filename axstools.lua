@@ -17,14 +17,26 @@ end
 
 
 task.spawn(function()
-    -- Layanan dan Variabel Global
-    local Players = game:GetService("Players")
-    local UserInputService = game:GetService("UserInputService")
-    local RunService = game:GetService("RunService")
-    local Workspace = game:GetService("Workspace")
-    local LocalPlayer = Players.LocalPlayer
-    local CoreGui = game:GetService("CoreGui")
+    -- ====================================================================
+    -- == BAGIAN OTENTIKASI DAN INISIALISASI                           ==
+    -- ====================================================================
     local HttpService = game:GetService("HttpService")
+    local CoreGui = game:GetService("CoreGui")
+
+    local function parseISO8601(iso)
+        local y, mo, d, h, mi, s = iso:match("^(%d%d%d%d)-(%d%d)-(%d%d)T(%d%d):(%d%d):(%d%d)")
+        if not y then return nil end
+        -- os.time in Roblox is UTC
+        return os.time({year=tonumber(y), month=tonumber(mo), day=tonumber(d), hour=tonumber(h), min=tonumber(mi), sec=tonumber(s)})
+    end
+
+    local function InitializeMainGUI(expirationTimestamp)
+        -- Layanan dan Variabel Global
+        local Players = game:GetService("Players")
+        local UserInputService = game:GetService("UserInputService")
+        local RunService = game:GetService("RunService")
+        local Workspace = game:GetService("Workspace")
+        local LocalPlayer = Players.LocalPlayer
     local TweenService = game:GetService("TweenService")
     local Lighting = game:GetService("Lighting")
     local MaterialService = game:GetService("MaterialService")
@@ -274,11 +286,23 @@ task.spawn(function()
     TitleLabel.TextSize = 14
     TitleLabel.Font = Enum.Font.SourceSansBold
     TitleLabel.Parent = TitleBar
+
+    -- ExpirationLabel is now a child of MainFrame, positioned below the TitleBar
+    local ExpirationLabel = Instance.new("TextLabel")
+    ExpirationLabel.Name = "ExpirationLabel"
+    ExpirationLabel.Size = UDim2.new(1, 0, 0, 15)
+    ExpirationLabel.Position = UDim2.new(0, 0, 0, 30) -- Positioned at Y=30, just below the TitleBar
+    ExpirationLabel.BackgroundTransparency = 1
+    ExpirationLabel.Text = "..."
+    ExpirationLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    ExpirationLabel.TextSize = 10
+    ExpirationLabel.Font = Enum.Font.SourceSans
+    ExpirationLabel.Parent = MainFrame
     
     local TabsFrame = Instance.new("Frame")
     TabsFrame.Name = "TabsFrame"
-    TabsFrame.Size = UDim2.new(0, 80, 1, -30)
-    TabsFrame.Position = UDim2.new(0, 0, 0, 30)
+    TabsFrame.Size = UDim2.new(0, 80, 1, -45) -- Y size adjusted for the 15px ExpirationLabel
+    TabsFrame.Position = UDim2.new(0, 0, 0, 45) -- Y position adjusted for the 15px ExpirationLabel
     TabsFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     TabsFrame.BorderSizePixel = 0
     TabsFrame.Parent = MainFrame
@@ -293,8 +317,8 @@ task.spawn(function()
     
     local ContentFrame = Instance.new("Frame")
     ContentFrame.Name = "ContentFrame"
-    ContentFrame.Size = UDim2.new(1, -80, 1, -30)
-    ContentFrame.Position = UDim2.new(0, 80, 0, 30)
+    ContentFrame.Size = UDim2.new(1, -80, 1, -45) -- Y size adjusted for the 15px ExpirationLabel
+    ContentFrame.Position = UDim2.new(0, 80, 0, 45) -- Y position adjusted for the 15px ExpirationLabel
     ContentFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     ContentFrame.BackgroundTransparency = 1
     ContentFrame.BorderSizePixel = 0
@@ -2464,7 +2488,7 @@ task.spawn(function()
         
         -- Setup variabel untuk kontrol kamera
         local cameraRotationSensitivity = 0.004
-        local cameraMoveSpeed = 1
+        local cameraMoveSpeed = 15
         local moveVector = Vector2.new(0, 0)
         local isJoystickActive = false
         local rotationInput = nil
@@ -2485,73 +2509,69 @@ task.spawn(function()
 
         -- tombol naik/turun
         
-        -- Kontrol ketinggian analog (mengganti tombol naik/turun)
-        local AltitudeFrame = Instance.new("Frame")
-        AltitudeFrame.Name = "AltitudeFrame"
-        AltitudeFrame.Size = UDim2.new(0, 40, 0, 160)
-        AltitudeFrame.Position = UDim2.new(1, -55, 0.5, -80)
-        AltitudeFrame.BackgroundTransparency = 1
-        AltitudeFrame.Parent = screenGui
+        -- Tombol Naik dan Turun
+        local verticalMove = 0
+        local moveSpeed = 20 -- Kecepatan gerak naik/turun
 
-        local AltitudeBase = Instance.new("ImageLabel")
-        AltitudeBase.Name = "Base"
-        AltitudeBase.Size = UDim2.new(1, 0, 1, 0)
-        AltitudeBase.BackgroundTransparency = 1
-        AltitudeBase.Image = "rbxassetid://392630590"
-        AltitudeBase.ImageTransparency = 0.8
-        AltitudeBase.ScaleType = Enum.ScaleType.Slice
-        AltitudeBase.SliceCenter = Rect.new(100,100,100,100)
-        AltitudeBase.Parent = AltitudeFrame
+        local function createFlyButton(name, text, position)
+            local button = Instance.new("TextButton")
+            button.Name = name
+            button.Size = UDim2.new(0, 50, 0, 45) -- Adjusted size
+            button.Position = position
+            button.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+            button.BackgroundTransparency = 0.4
+            button.BorderSizePixel = 0
+            button.Font = Enum.Font.SourceSansBold
+            button.Text = text
+            button.TextColor3 = Color3.fromRGB(255, 255, 255)
+            button.TextSize = 28
+            button.Parent = spectateLocationGui
 
-        local AltitudeThumb = Instance.new("ImageLabel")
-        AltitudeThumb.Name = "Thumb"
-        AltitudeThumb.Size = UDim2.new(1, -8, 0, 24)
-        AltitudeThumb.Position = UDim2.new(0,4,0.5,-12)
-        AltitudeThumb.AnchorPoint = Vector2.new(0.5,0.5)
-        AltitudeThumb.BackgroundTransparency = 1
-        AltitudeThumb.Image = "rbxassetid://392630590"
-        AltitudeThumb.ImageTransparency = 0.4
-        AltitudeThumb.ScaleType = Enum.ScaleType.Slice
-        AltitudeThumb.SliceCenter = Rect.new(100,100,100,100)
-        AltitudeThumb.ZIndex = 2
-        AltitudeThumb.Parent = AltitudeBase
+            local corner = Instance.new("UICorner", button)
+            corner.CornerRadius = UDim.new(0, 8)
 
-        -- nilai ketinggian analog: -1 (turun) .. 1 (naik)
-        local altitudeValue = 0
-        local altitudeInput = nil
-        AltitudeBase.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-                altitudeInput = input
+            local stroke = Instance.new("UIStroke", button)
+            stroke.Color = Color3.fromRGB(0, 150, 255)
+            stroke.Thickness = 1.5
+            stroke.Transparency = 0.6
+
+            local gradient = Instance.new("UIGradient", button)
+            gradient.Color = ColorSequence.new{
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(80, 80, 80)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(40, 40, 40))
+            }
+            gradient.Rotation = 90
+
+            return button
+        end
+
+        local upButton = createFlyButton("UpButton", "⌃", UDim2.new(1, -70, 1, -170))
+        local downButton = createFlyButton("DownButton", "⌄", UDim2.new(1, -70, 1, -115))
+
+        upButton.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                verticalMove = 1
             end
         end)
-        AltitudeBase.InputChanged:Connect(function(input)
-            if not altitudeInput or input ~= altitudeInput then return end
-            local center = AltitudeBase.AbsolutePosition + (AltitudeBase.AbsoluteSize/2)
-            local pos = UserInputService:GetMouseLocation()
-            local dy = (pos.Y - center.Y)
-            local maxRange = AltitudeBase.AbsoluteSize.Y/2
-            local clamped = math.clamp(-dy / maxRange, -1, 1) -- up -> positive
-            altitudeValue = clamped
-            AltitudeThumb.Position = UDim2.fromOffset(
-                AltitudeBase.AbsoluteSize.X/2 - AltitudeThumb.AbsoluteSize.X/2,
-                AltitudeBase.AbsoluteSize.Y/2 - AltitudeThumb.AbsoluteSize.Y/2 + clamped * (maxRange - AltitudeThumb.AbsoluteSize.Y/2)
-            )
+        upButton.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                verticalMove = 0
+            end
         end)
-        AltitudeBase.InputEnded:Connect(function(input)
-            if altitudeInput and input.UserInputType == altitudeInput.UserInputType then
-                altitudeInput = nil
-                -- kembalikan perlahan ke 0
-                altitudeValue = 0
-                if AltitudeThumb then
-                    pcall(function()
-                        AltitudeThumb.Position = UDim2.fromOffset(AltitudeBase.AbsoluteSize.X/2 - AltitudeThumb.AbsoluteSize.X/2, AltitudeBase.AbsoluteSize.Y/2 - AltitudeThumb.AbsoluteSize.Y/2)
-                    end)
-                end
+
+        downButton.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                verticalMove = -1
+            end
+        end)
+        downButton.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                verticalMove = 0
             end
         end)
 -- rotasi kamera dengan swipe
         local rotationInput = nil
-        UserInputService.InputBegan:Connect(function(input,gpe)
+        local swipeBeganConn = UserInputService.InputBegan:Connect(function(input,gpe)
             if gpe or not isSpectatingLocation then return end
             if input.UserInputType==Enum.UserInputType.Touch then
                 local joyPos, joySize = JoystickFrame.AbsolutePosition, JoystickFrame.AbsoluteSize
@@ -2562,78 +2582,19 @@ task.spawn(function()
                 end
             end
         end)
-        UserInputService.InputChanged:Connect(function(input,gpe)
+        local swipeChangedConn = UserInputService.InputChanged:Connect(function(input,gpe)
             if gpe or not isSpectatingLocation or not rotationInput or input~=rotationInput then return end
             local delta = input.Delta
             camYaw = camYaw - delta.X * cameraRotationSensitivity
             camPitch = math.clamp(camPitch - delta.Y * cameraRotationSensitivity,-1.4,1.4)
         end)
-        UserInputService.InputEnded:Connect(function(input,gpe)
+        local swipeEndedConn = UserInputService.InputEnded:Connect(function(input,gpe)
             if input==rotationInput then rotationInput=nil end
         end)
 
-        -- update kamera per frame
-        local rsConn
-        rsConn = RunService.RenderStepped:Connect(function(dt)
-            if not isSpectatingLocation then rsConn:Disconnect() return end
-
-            -- arah kamera
-            local rotCFrame = CFrame.Angles(0,camYaw,0) * CFrame.Angles(camPitch,0,0)
-            camera.CFrame = CFrame.new(camPos) * rotCFrame
-
-            -- gerakan joystick
-            local moveVec = Vector3.new(joystickInput.X,0,-joystickInput.Y)
-            local moveWorld = (rotCFrame * CFrame.new(moveVec)).Position
-            camPos = camPos + Vector3.new(moveWorld.X,0,moveWorld.Z) * cameraMoveSpeed * dt
-
-            -- kontrol ketinggian via altitude joystick
-            if altitudeValue and altitudeValue ~= 0 then
-                camPos = camPos + Vector3.new(0, altitudeValue, 0) * cameraMoveSpeed * dt
-            end
-        end)
+        -- The first conflicting RenderStepped connection (rsConn) has been removed.
     
-        -- (fly spectate code inserted)
-local inputBeganConn = UserInputService.InputBegan:Connect(function(input, gpe)
-            if gpe or not isSpectatingLocation or input.UserInputType ~= Enum.UserInputType.Touch then return end
-
-            -- Cek apakah sentuhan dimulai di luar area joystick
-            local joyPos, joySize = JoystickFrame.AbsolutePosition, JoystickFrame.AbsoluteSize
-            local isTouchingJoystick = (input.Position.X >= joyPos.X and input.Position.X <= joyPos.X + joySize.X and
-                                        input.Position.Y >= joyPos.Y and input.Position.Y <= joyPos.Y + joySize.Y)
-
-            if not isTouchingJoystick then
-                rotationInput = input
-            end
-        end)
-
-        local inputChangedConn = UserInputService.InputChanged:Connect(function(input, gpe)
-            if gpe or not isSpectatingLocation or not rotationInput or input ~= rotationInput then return end
-            if not camera then camera = Workspace.CurrentCamera end
-
-            local delta = input.Delta
-            if not delta then return end
-
-            -- Yaw: putar mengelilingi sumbu Y dunia (left/right)
-            local yaw = -delta.X * cameraRotationSensitivity
-            camera.CFrame = CFrame.fromAxisAngle(Vector3.new(0,1,0), yaw) * camera.CFrame
-
-            -- Pitch: putar mengelilingi sumbu kanan lokal kamera (up/down)
-            local pitch = -delta.Y * cameraRotationSensitivity
-            local tryCFrame = camera.CFrame * CFrame.fromAxisAngle(camera.CFrame.RightVector, pitch)
-
-            -- Batasi agar kamera tidak terbalik (cek komponen Y dari LookVector)
-            local lookY = tryCFrame.LookVector.Y
-            if math.abs(lookY) <= 0.95 then
-                camera.CFrame = tryCFrame
-            end
-        end)
-
-        local inputEndedConn = UserInputService.InputEnded:Connect(function(input, gpe)
-            if gpe or not isSpectatingLocation then return end
-            if input == rotationInput then
-                rotationInput = nil
-            end
-        end)
+        -- The conflicting, direct CFrame manipulation code has been removed to resolve the bug.
 
         -- Koneksi untuk Joystick
         local joystickInput = nil
@@ -2645,7 +2606,7 @@ local inputBeganConn = UserInputService.InputBegan:Connect(function(input, gpe)
         end)
 
         local joystickChangedConn = UserInputService.InputChanged:Connect(function(input)
-            if isJoystickActive and joystickInput and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+            if isJoystickActive and joystickInput and input == joystickInput then
                 local center = JoystickBase.AbsolutePosition + (JoystickBase.AbsoluteSize / 2)
                 local pos = UserInputService:GetMouseLocation()
                 
@@ -2674,34 +2635,48 @@ local inputBeganConn = UserInputService.InputBegan:Connect(function(input, gpe)
             end
         end)
 
-        -- [[ PERBAIKAN LOGIKA GERAKAN JOYSTICK ]]
-        -- Koneksi untuk Pergerakan Kamera berdasarkan input Joystick
-        local movementConn = RunService.RenderStepped:Connect(function()
-            if not isSpectatingLocation or moveVector.Magnitude < 0.01 then return end
-            
-            -- Dapatkan vektor arah kamera saat ini
+        -- The second conflicting RenderStepped connection (movementConn) has been removed.
+
+        -- Unified Camera Controller
+        local unifiedConn = RunService.RenderStepped:Connect(function(dt)
+            if not isSpectatingLocation then
+                unifiedConn:Disconnect()
+                return
+            end
+
+            -- Handle horizontal movement from joystick
             local lookVector = camera.CFrame.LookVector
             local rightVector = camera.CFrame.RightVector
-
-            -- Proyeksikan vektor ke bidang horizontal (Y=0) dan normalisasi ulang.
-            -- Ini memastikan gerakan maju/mundur tidak akan membuat kamera naik/turun,
-            -- bahkan jika Anda sedang melihat ke atas atau ke bawah.
             local forwardDir = Vector3.new(lookVector.X, 0, lookVector.Z).Unit
             local rightDir = Vector3.new(rightVector.X, 0, rightVector.Z).Unit
-            
-            -- Hitung arah gerakan akhir berdasarkan input joystick.
-            -- -moveVector.Y untuk maju/mundur, moveVector.X untuk kanan/kiri.
             local moveDirection = (forwardDir * -moveVector.Y) + (rightDir * moveVector.X)
 
-            -- Terapkan gerakan ke CFrame kamera jika ada input.
-            if moveDirection.Magnitude > 0.01 then
-                -- [[ PATCH FIX ANALOG SPECTATE LOKASI ]]
-                camPos = camPos + moveDirection.Unit * cameraMoveSpeed
-                camera.CFrame = CFrame.new(camPos) * CFrame.Angles(0, camYaw, 0) * CFrame.Angles(camPitch, 0, 0)
+            -- Combine horizontal and vertical movement
+            local totalMove = moveDirection * cameraMoveSpeed + Vector3.new(0, verticalMove * moveSpeed, 0)
+
+            -- Update camera position
+            camPos = camPos + totalMove * dt
+
+            -- Update camera rotation from swipe input
+            local rotCFrame = CFrame.Angles(0, camYaw, 0) * CFrame.Angles(camPitch, 0, 0)
+            camera.CFrame = CFrame.new(camPos) * rotCFrame
+
+            -- Dynamic FOV
+            local baseFov = 80
+            local maxFovIncrease = 20
+            local fovChangeSpeed = 30
+            if verticalMove > 0 then -- Moving up
+                camera.FieldOfView = math.min(camera.FieldOfView + fovChangeSpeed * dt, baseFov + maxFovIncrease)
+            elseif verticalMove < 0 then -- Moving down
+                camera.FieldOfView = math.max(camera.FieldOfView - fovChangeSpeed * dt, baseFov)
+            else -- Not moving vertically
+                if camera.FieldOfView > baseFov then
+                    camera.FieldOfView = math.max(camera.FieldOfView - fovChangeSpeed * dt, baseFov)
+                end
             end
         end)
-        
-        spectateCameraConnections = {inputBeganConn, inputChangedConn, inputEndedConn, movementConn, joystickChangedConn, joystickEndedConn}
+
+        spectateCameraConnections = {swipeBeganConn, swipeChangedConn, swipeEndedConn, joystickChangedConn, joystickEndedConn, unifiedConn}
     end
     -- [[ PERUBAHAN BESAR SELESAI ]]
     
@@ -3299,4 +3274,132 @@ local inputBeganConn = UserInputService.InputBegan:Connect(function(input, gpe)
     if LocalPlayer.Character then
         reapplyFeaturesOnRespawn(LocalPlayer.Character)
     end
+
+    -- Countdown Timer
+    local countdownConn = RunService.Heartbeat:Connect(function()
+        local remainingSeconds = expirationTimestamp - os.time()
+
+        if remainingSeconds <= 0 then
+            countdownConn:Disconnect() -- Stop the loop immediately
+            showNotification("Your access has expired.", Color3.fromRGB(200, 50, 50))
+            task.wait(0.1) -- Small delay to ensure notification is seen before closing
+            CloseScript()
+            return
+        end
+
+        local days = math.floor(remainingSeconds / 86400)
+        remainingSeconds = remainingSeconds % 86400
+        local hours = math.floor(remainingSeconds / 3600)
+        remainingSeconds = remainingSeconds % 3600
+        local minutes = math.floor(remainingSeconds / 60)
+        local seconds = remainingSeconds % 60
+
+        ExpirationLabel.Text = string.format("Expires in: %dD %02dH %02dM %02dS", days, hours, minutes, seconds)
+    end)
+    end -- End of InitializeMainGUI
+
+    -- Password logic will be added here
+    local success, passwordData = pcall(function()
+        local rawData = game:HttpGet("https://raw.githubusercontent.com/AREXANS/emoteff/refs/heads/main/password.json")
+        return HttpService:JSONDecode(rawData)
+    end)
+
+    if not success or not passwordData then
+        warn("Could not fetch or parse password file.", passwordData)
+        -- In a real scenario, you'd want a more user-friendly error GUI
+        return
+    end
+
+    -- ====================================================================
+    -- == BAGIAN GUI PROMPT PASSWORD                                   ==
+    -- ====================================================================
+    local PasswordScreenGui = Instance.new("ScreenGui")
+    PasswordScreenGui.Name = "PasswordPromptGUI"
+    PasswordScreenGui.Parent = CoreGui
+    PasswordScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    PasswordScreenGui.ResetOnSpawn = false
+
+    local PromptFrame = Instance.new("Frame")
+    PromptFrame.Name = "PromptFrame"
+    PromptFrame.Size = UDim2.new(0, 250, 0, 150)
+    PromptFrame.Position = UDim2.new(0.5, -125, 0.5, -75)
+    PromptFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    PromptFrame.BackgroundTransparency = 0.5
+    PromptFrame.BorderSizePixel = 0
+    PromptFrame.Parent = PasswordScreenGui
+
+    local PromptCorner = Instance.new("UICorner", PromptFrame)
+    PromptCorner.CornerRadius = UDim.new(0, 8)
+    local PromptStroke = Instance.new("UIStroke", PromptFrame)
+    PromptStroke.Color = Color3.fromRGB(0, 150, 255)
+    PromptStroke.Thickness = 2
+    PromptStroke.Transparency = 0.5
+
+    local PromptTitle = Instance.new("TextLabel", PromptFrame)
+    PromptTitle.Name = "Title"
+    PromptTitle.Size = UDim2.new(1, 0, 0, 30)
+    PromptTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    PromptTitle.Text = "Authentication Required"
+    PromptTitle.Font = Enum.Font.SourceSansBold
+    PromptTitle.TextColor3 = Color3.fromRGB(0, 200, 255)
+    PromptTitle.TextSize = 14
+
+    local PasswordBox = Instance.new("TextBox", PromptFrame)
+    PasswordBox.Name = "PasswordBox"
+    PasswordBox.Size = UDim2.new(1, -20, 0, 30)
+    PasswordBox.Position = UDim2.new(0, 10, 0, 40)
+    PasswordBox.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    PasswordBox.TextColor3 = Color3.fromRGB(220, 220, 220)
+    PasswordBox.PlaceholderText = "Enter Password..."
+    PasswordBox.Text = ""
+    PasswordBox.Font = Enum.Font.SourceSans
+    PasswordBox.TextSize = 14
+    PasswordBox.ClearTextOnFocus = false
+    local PassCorner = Instance.new("UICorner", PasswordBox)
+    PassCorner.CornerRadius = UDim.new(0, 5)
+
+    local SubmitButton = Instance.new("TextButton", PromptFrame)
+    SubmitButton.Name = "SubmitButton"
+    SubmitButton.Size = UDim2.new(1, -20, 0, 30)
+    SubmitButton.Position = UDim2.new(0, 10, 0, 80)
+    SubmitButton.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+    SubmitButton.Text = "Login"
+    SubmitButton.Font = Enum.Font.SourceSansBold
+    SubmitButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    SubmitButton.TextSize = 14
+    local SubmitCorner = Instance.new("UICorner", SubmitButton)
+    SubmitCorner.CornerRadius = UDim.new(0, 5)
+
+    local StatusLabel = Instance.new("TextLabel", PromptFrame)
+    StatusLabel.Name = "StatusLabel"
+    StatusLabel.Size = UDim2.new(1, -20, 0, 20)
+    StatusLabel.Position = UDim2.new(0, 10, 1, -25)
+    StatusLabel.BackgroundTransparency = 1
+    StatusLabel.Text = ""
+    StatusLabel.Font = Enum.Font.SourceSans
+    StatusLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
+    StatusLabel.TextSize = 12
+
+    SubmitButton.MouseButton1Click:Connect(function()
+        local enteredPassword = PasswordBox.Text
+        local valid = false
+        local expiration
+
+        for _, data in ipairs(passwordData) do
+            if data.password == enteredPassword then
+                expiration = parseISO8601(data.expired)
+                if expiration and os.time() < expiration then
+                    valid = true
+                    break
+                end
+            end
+        end
+
+        if valid then
+            PasswordScreenGui:Destroy()
+            InitializeMainGUI(expiration)
+        else
+            StatusLabel.Text = "Password incorrect or expired."
+        end
+    end)
 end)
