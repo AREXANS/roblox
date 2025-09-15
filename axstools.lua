@@ -965,6 +965,7 @@ task.spawn(function()
         SearchBox.Position = UDim2.new(0, 10, 0, 35)
         SearchBox.BackgroundColor3 = Color3.fromRGB(48, 63, 90)
         SearchBox.PlaceholderText = "Cari emote..."
+        SearchBox.Text = ""
         SearchBox.PlaceholderColor3 = Color3.fromRGB(180, 190, 210)
         SearchBox.Font = Enum.Font.Gotham
         SearchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1169,6 +1170,7 @@ task.spawn(function()
             local searchBar = Instance.new("TextBox", frame)
             searchBar.Name = "SearchBar"
             searchBar.PlaceholderText = "Search..."
+            searchBar.Text = ""
             searchBar.Font = Enum.Font.SourceSans
             searchBar.TextScaled = true
             searchBar.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -2744,7 +2746,7 @@ task.spawn(function()
     end)
 
     local searchFrame = Instance.new("Frame", playerHeaderFrame); searchFrame.Size = UDim2.new(1, 0, 0, 25); searchFrame.Position = UDim2.new(0, 0, 0, 20); searchFrame.BackgroundTransparency = 1
-    local searchTextBox = Instance.new("TextBox", searchFrame); searchTextBox.Size = UDim2.new(0.7, -10, 1, 0); searchTextBox.Position = UDim2.new(0, 5, 0, 0); searchTextBox.BackgroundColor3 = Color3.fromRGB(35, 35, 35); searchTextBox.TextColor3 = Color3.fromRGB(200, 200, 200); searchTextBox.PlaceholderText = "Cari Pemain..."; searchTextBox.TextSize = 12; searchTextBox.Font = Enum.Font.SourceSans; searchTextBox.ClearTextOnFocus = true; local sboxCorner = Instance.new("UICorner", searchTextBox); sboxCorner.CornerRadius = UDim.new(0, 5)
+    local searchTextBox = Instance.new("TextBox", searchFrame); searchTextBox.Text = ""; searchTextBox.Size = UDim2.new(0.7, -10, 1, 0); searchTextBox.Position = UDim2.new(0, 5, 0, 0); searchTextBox.BackgroundColor3 = Color3.fromRGB(35, 35, 35); searchTextBox.TextColor3 = Color3.fromRGB(200, 200, 200); searchTextBox.PlaceholderText = "Cari Pemain..."; searchTextBox.TextSize = 12; searchTextBox.Font = Enum.Font.SourceSans; searchTextBox.ClearTextOnFocus = true; local sboxCorner = Instance.new("UICorner", searchTextBox); sboxCorner.CornerRadius = UDim.new(0, 5)
     local searchButton = Instance.new("TextButton", searchFrame); searchButton.Size = UDim2.new(0.3, 0, 1, 0); searchButton.Position = UDim2.new(0.7, 0, 0, 0); searchButton.BackgroundColor3 = Color3.fromRGB(0, 150,  255); searchButton.BorderSizePixel = 0; searchButton.Text = "Cari"; searchButton.TextColor3 = Color3.fromRGB(255, 255, 255); searchButton.TextSize = 12; searchButton.Font = Enum.Font.SourceSansBold; local sbtnCorner = Instance.new("UICorner", searchButton); sbtnCorner.CornerRadius = UDim.new(0, 5)
     
     local function createPlayerButton(player)
