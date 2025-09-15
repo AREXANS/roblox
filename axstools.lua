@@ -1641,8 +1641,8 @@ task.spawn(function()
             if not (RootPart and Character) then return end
             RootPart.CFrame = CFrame.new(BasePart.Position) * Pos * Ang
             Character:SetPrimaryPartCFrame(CFrame.new(BasePart.Position) * Pos * Ang)
-            RootPart.Velocity = Vector3.new(9e7, 9e7 * 10, 9e7)
-            RootPart.RotVelocity = Vector3.new(9e8, 9e8, 9e8)
+            RootPart.Velocity = Vector3.new(9e8, 9e8 * 10, 9e8)
+            RootPart.RotVelocity = Vector3.new(9e9, 9e9, 9e9)
         end
         
         local SFBasePart = function(BasePart)
@@ -1896,7 +1896,7 @@ task.spawn(function()
         local OnOffButton = Instance.new("TextButton", Frame); OnOffButton.BackgroundColor3 = Color3.fromRGB(0, 120, 255); OnOffButton.BorderSizePixel = 0; OnOffButton.Position = UDim2.new(0.5, -30, 0, 25); OnOffButton.Size = UDim2.new(0, 60, 0, 22); OnOffButton.Font = Enum.Font.SourceSansBold; OnOffButton.Text = "OFF"; OnOffButton.TextColor3 = Color3.fromRGB(255, 255, 255); OnOffButton.TextSize = 14; local OnOffButtonCorner = Instance.new("UICorner", OnOffButton); OnOffButtonCorner.CornerRadius = UDim.new(0, 5); local OnOffButtonGradient = Instance.new("UIGradient", OnOffButton); OnOffButtonGradient.Color = ColorSequence.new(Color3.fromRGB(100, 180, 255), Color3.fromRGB(80, 150, 255)); OnOffButtonGradient.Rotation = 90
         local CloseButton = Instance.new("TextButton", TitleBar); CloseButton.Size = UDim2.new(0, 16, 0, 16); CloseButton.Position = UDim2.new(1, -18, 0.5, -8); CloseButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50); CloseButton.Text = "X"; CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255); CloseButton.Font = Enum.Font.SourceSansBold; CloseButton.TextSize = 11; local corner = Instance.new("UICorner", CloseButton); corner.CornerRadius = UDim.new(1, 0)
         local hiddenfling, flingThread = false, nil
-        local function fling() while hiddenfling do local hrp = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart"); if hrp then local vel = hrp.Velocity; hrp.Velocity = vel * 10000 + Vector3.new(0, 10000, 0); RunService.RenderStepped:Wait(); if hrp and hrp.Parent then hrp.Velocity = vel end; RunService.Stepped:Wait(); if hrp and hrp.Parent then hrp.Velocity = vel + Vector3.new(0, 0.1 * (math.random(0, 1) == 0 and -1 or 1), 0) end end; RunService.Heartbeat:Wait() end end
+        local function fling() while hiddenfling do local hrp = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart"); if hrp then local vel = hrp.Velocity; hrp.Velocity = vel * 50000 + Vector3.new(0, 50000, 0); RunService.RenderStepped:Wait(); if hrp and hrp.Parent then hrp.Velocity = vel end; RunService.Stepped:Wait(); if hrp and hrp.Parent then hrp.Velocity = vel + Vector3.new(0, 0.1 * (math.random(0, 1) == 0 and -1 or 1), 0) end end; RunService.Heartbeat:Wait() end end
         OnOffButton.MouseButton1Click:Connect(function() hiddenfling = not hiddenfling; OnOffButton.Text = hiddenfling and "ON" or "OFF"; if hiddenfling then if not flingThread or coroutine.status(flingThread) == "dead" then flingThread = coroutine.create(fling); coroutine.resume(flingThread) end end end)
         CloseButton.MouseButton1Click:Connect(function() hiddenfling = false; FlingScreenGui:Destroy(); touchFlingGui = nil end)
     end
@@ -3335,14 +3335,46 @@ task.spawn(function()
     PromptStroke.Thickness = 2
     PromptStroke.Transparency = 0.5
 
-    local PromptTitle = Instance.new("TextLabel", PromptFrame)
+    -- [MODIFIKASI] Mengubah Title menjadi TextButton untuk handle drag
+    local PromptTitle = Instance.new("TextButton")
     PromptTitle.Name = "Title"
     PromptTitle.Size = UDim2.new(1, 0, 0, 30)
     PromptTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    PromptTitle.Text = "Authentication Required"
-    PromptTitle.Font = Enum.Font.SourceSansBold
-    PromptTitle.TextColor3 = Color3.fromRGB(0, 200, 255)
-    PromptTitle.TextSize = 14
+    PromptTitle.Text = "" -- Teks judul akan diatur oleh label terpisah
+    PromptTitle.AutoButtonColor = false
+    PromptTitle.Parent = PromptFrame
+
+    local PromptTitleLabel = Instance.new("TextLabel", PromptTitle)
+    PromptTitleLabel.Name = "TitleLabel"
+    PromptTitleLabel.Size = UDim2.new(1, 0, 1, 0) -- Isi seluruh parent
+    PromptTitleLabel.Position = UDim2.new(0, 0, 0, 0)
+    PromptTitleLabel.BackgroundTransparency = 1
+    PromptTitleLabel.Text = "Authentication Required"
+    PromptTitleLabel.Font = Enum.Font.SourceSansBold
+    PromptTitleLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
+    PromptTitleLabel.TextSize = 14
+    PromptTitleLabel.TextXAlignment = Enum.TextXAlignment.Center -- Pusatkan teks
+
+    -- [MODIFIKASI] Menambahkan Tombol Close (X)
+    local CloseButton = Instance.new("TextButton")
+    CloseButton.Name = "CloseButton"
+    CloseButton.Size = UDim2.new(0, 20, 0, 20)
+    CloseButton.Position = UDim2.new(1, -15, 0.5, 0) -- Posisi disesuaikan
+    CloseButton.AnchorPoint = Vector2.new(0.5, 0.5)
+    CloseButton.BackgroundTransparency = 1
+    CloseButton.Font = Enum.Font.SourceSansBold
+    CloseButton.Text = "X"
+    CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CloseButton.TextSize = 18
+    CloseButton.Parent = PromptTitle
+    CloseButton.MouseButton1Click:Connect(function()
+        PasswordScreenGui:Destroy()
+    end)
+
+    -- [MODIFIKASI] Membuat jendela dapat digeser
+    pcall(function()
+        MakeDraggable(PromptFrame, PromptTitle, function() return true end, nil)
+    end)
 
     local PasswordBox = Instance.new("TextBox", PromptFrame)
     PasswordBox.Name = "PasswordBox"
