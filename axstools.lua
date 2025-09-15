@@ -31,6 +31,14 @@ task.spawn(function()
     end
 
     local function InitializeMainGUI(expirationTimestamp)
+        -- [[ PERUBAHAN BESAR: Pengelola Koneksi untuk Total Shutdown ]]
+        local AllConnections = {}
+        local function ConnectEvent(event, func)
+            local conn = event:Connect(func)
+            table.insert(AllConnections, conn)
+            return conn
+        end
+
         -- Layanan dan Variabel Global
         local Players = game:GetService("Players")
         local UserInputService = game:GetService("UserInputService")
@@ -807,7 +815,7 @@ task.spawn(function()
     -- untuk mencegah pergerakan yang tidak disengaja saat pengguna hanya ingin menekan tombol.
     -- Posisi GUI juga akan otomatis tersimpan setelah selesai digeser.
     local function MakeDraggable(guiObject, dragHandle, isDraggableCheck, clickCallback)
-        dragHandle.InputBegan:Connect(function(input, gameProcessedEvent)
+        ConnectEvent(dragHandle.InputBegan, function(input, gameProcessedEvent)
             if gameProcessedEvent then return end
             if not (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then return end
             
@@ -2507,69 +2515,7 @@ task.spawn(function()
         local camPos = targetCFrame.Position
         local camYaw, camPitch = 0, 0
 
-        -- tombol naik/turun
-        
-        -- Tombol Naik dan Turun
-        local verticalMove = 0
-        local moveSpeed = 20 -- Kecepatan gerak naik/turun
-
-        local function createFlyButton(name, text, position)
-            local button = Instance.new("TextButton")
-            button.Name = name
-            button.Size = UDim2.new(0, 50, 0, 45) -- Adjusted size
-            button.Position = position
-            button.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-            button.BackgroundTransparency = 0.4
-            button.BorderSizePixel = 0
-            button.Font = Enum.Font.SourceSansBold
-            button.Text = text
-            button.TextColor3 = Color3.fromRGB(255, 255, 255)
-            button.TextSize = 28
-            button.Parent = spectateLocationGui
-
-            local corner = Instance.new("UICorner", button)
-            corner.CornerRadius = UDim.new(0, 8)
-
-            local stroke = Instance.new("UIStroke", button)
-            stroke.Color = Color3.fromRGB(0, 150, 255)
-            stroke.Thickness = 1.5
-            stroke.Transparency = 0.6
-
-            local gradient = Instance.new("UIGradient", button)
-            gradient.Color = ColorSequence.new{
-                ColorSequenceKeypoint.new(0, Color3.fromRGB(80, 80, 80)),
-                ColorSequenceKeypoint.new(1, Color3.fromRGB(40, 40, 40))
-            }
-            gradient.Rotation = 90
-
-            return button
-        end
-
-        local upButton = createFlyButton("UpButton", "⌃", UDim2.new(1, -70, 1, -170))
-        local downButton = createFlyButton("DownButton", "⌄", UDim2.new(1, -70, 1, -115))
-
-        upButton.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                verticalMove = 1
-            end
-        end)
-        upButton.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                verticalMove = 0
-            end
-        end)
-
-        downButton.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                verticalMove = -1
-            end
-        end)
-        downButton.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                verticalMove = 0
-            end
-        end)
--- rotasi kamera dengan swipe
+        -- rotasi kamera dengan swipe
         local rotationInput = nil
         local swipeBeganConn = UserInputService.InputBegan:Connect(function(input,gpe)
             if gpe or not isSpectatingLocation then return end
@@ -2591,10 +2537,6 @@ task.spawn(function()
         local swipeEndedConn = UserInputService.InputEnded:Connect(function(input,gpe)
             if input==rotationInput then rotationInput=nil end
         end)
-
-        -- The first conflicting RenderStepped connection (rsConn) has been removed.
-    
-        -- The conflicting, direct CFrame manipulation code has been removed to resolve the bug.
 
         -- Koneksi untuk Joystick
         local joystickInput = nil
@@ -2635,45 +2577,28 @@ task.spawn(function()
             end
         end)
 
-        -- The second conflicting RenderStepped connection (movementConn) has been removed.
-
-        -- Unified Camera Controller
+        -- Kontroler Kamera Terpadu (Gaya Terbang)
         local unifiedConn = RunService.RenderStepped:Connect(function(dt)
             if not isSpectatingLocation then
                 unifiedConn:Disconnect()
                 return
             end
 
-            -- Handle horizontal movement from joystick
+            -- Dapatkan vektor arah 3D penuh dari kamera
             local lookVector = camera.CFrame.LookVector
             local rightVector = camera.CFrame.RightVector
-            local forwardDir = Vector3.new(lookVector.X, 0, lookVector.Z).Unit
-            local rightDir = Vector3.new(rightVector.X, 0, rightVector.Z).Unit
-            local moveDirection = (forwardDir * -moveVector.Y) + (rightDir * moveVector.X)
 
-            -- Combine horizontal and vertical movement
-            local totalMove = moveDirection * cameraMoveSpeed + Vector3.new(0, verticalMove * moveSpeed, 0)
+            -- Hitung pergerakan berdasarkan input joystick dan arah kamera
+            -- Sumbu Y joystick (-moveVector.Y) mengontrol maju/mundur di sepanjang lookVector
+            -- Sumbu X joystick (moveVector.X) mengontrol gerakan ke samping di sepanjang rightVector
+            local moveDirection = (lookVector * -moveVector.Y) + (rightVector * moveVector.X)
 
-            -- Update camera position
-            camPos = camPos + totalMove * dt
+            -- Perbarui posisi kamera
+            camPos = camPos + moveDirection * cameraMoveSpeed * dt
 
-            -- Update camera rotation from swipe input
+            -- Perbarui rotasi kamera dari input geser (swipe)
             local rotCFrame = CFrame.Angles(0, camYaw, 0) * CFrame.Angles(camPitch, 0, 0)
             camera.CFrame = CFrame.new(camPos) * rotCFrame
-
-            -- Dynamic FOV
-            local baseFov = 80
-            local maxFovIncrease = 20
-            local fovChangeSpeed = 30
-            if verticalMove > 0 then -- Moving up
-                camera.FieldOfView = math.min(camera.FieldOfView + fovChangeSpeed * dt, baseFov + maxFovIncrease)
-            elseif verticalMove < 0 then -- Moving down
-                camera.FieldOfView = math.max(camera.FieldOfView - fovChangeSpeed * dt, baseFov)
-            else -- Not moving vertically
-                if camera.FieldOfView > baseFov then
-                    camera.FieldOfView = math.max(camera.FieldOfView - fovChangeSpeed * dt, baseFov)
-                end
-            end
         end)
 
         spectateCameraConnections = {swipeBeganConn, swipeChangedConn, swipeEndedConn, joystickChangedConn, joystickEndedConn, unifiedConn}
@@ -2745,12 +2670,23 @@ task.spawn(function()
     end
     
     local function CloseScript()
+        -- Pertama, putuskan setiap koneksi yang telah dibuat oleh skrip.
+        for _, conn in ipairs(AllConnections) do
+            pcall(function() conn:Disconnect() end)
+        end
+        AllConnections = {} -- Kosongkan tabel untuk mencegah eksekusi ganda
+
+        -- Nonaktifkan fitur apa pun yang memerlukan logika khusus (seperti reset kecepatan jalan)
         pcall(DisableAllFeatures)
+
+        -- Terakhir, hancurkan semua GUI dengan aman
         pcall(function() if ScreenGui and ScreenGui.Parent then ScreenGui:Destroy() end end)
         pcall(function() if touchFlingGui and touchFlingGui.Parent then touchFlingGui:Destroy() end end)
         pcall(function() if SpectatorGui and SpectatorGui.Parent then SpectatorGui:Destroy() end end)
         pcall(function() if spectateLocationGui and spectateLocationGui.Parent then spectateLocationGui:Destroy() end end)
         pcall(function() if flingStatusGui and flingStatusGui.Parent then flingStatusGui:Destroy() end end)
+        pcall(function() if EmoteScreenGui and EmoteScreenGui.Parent then EmoteScreenGui:Destroy() end end)
+        pcall(function() if AnimationScreenGui and AnimationScreenGui.Parent then AnimationScreenGui:Destroy() end end)
     end
     
     -- ====================================================================
@@ -2964,7 +2900,7 @@ task.spawn(function()
     end
 
     -- Koneksi untuk update visual secara real-time
-    RunService.RenderStepped:Connect(function()
+    ConnectEvent(RunService.RenderStepped, function()
         if MainFrame.Visible and PlayerTabContent.Visible then
             for player, button in pairs(PlayerButtons) do
                 updateSinglePlayerButton(Players:GetPlayerByUserId(player))
@@ -2973,7 +2909,7 @@ task.spawn(function()
     end)
     
     -- Hapus tombol saat pemain keluar
-    Players.PlayerRemoving:Connect(function(player) 
+    ConnectEvent(Players.PlayerRemoving, function(player)
         if PlayerButtons[player.UserId] then
             PlayerButtons[player.UserId]:Destroy()
             PlayerButtons[player.UserId] = nil
@@ -2996,7 +2932,7 @@ task.spawn(function()
     end)
 
     -- Tambah tombol saat pemain masuk
-    Players.PlayerAdded:Connect(setupPlayer)
+    ConnectEvent(Players.PlayerAdded, setupPlayer)
 
     -- Setup untuk pemain yang sudah ada di server
     for _, player in ipairs(Players:GetPlayers()) do
@@ -3013,7 +2949,7 @@ task.spawn(function()
     createSlider(GeneralTabContent, "Kecepatan Terbang", 0, Settings.MaxFlySpeed, Settings.FlySpeed, "", 0.1, function(v) Settings.FlySpeed = v end)
     createToggle(GeneralTabContent, "Terbang", IsFlying, function(v) if v then if UserInputService.TouchEnabled then StartMobileFly() else StartFly() end else if UserInputService.TouchEnabled then StopMobileFly() else StopFly() end end end)
     createToggle(GeneralTabContent, "Noclip", IsNoclipEnabled, function(v) ToggleNoclip(v) end)
-    createToggle(GeneralTabContent, "Infinity Jump", IsInfinityJumpEnabled, function(v) IsInfinityJumpEnabled = v; saveFeatureStates(); if v then if LocalPlayer.Character and LocalPlayer.Character.Humanoid then infinityJumpConnection = UserInputService.JumpRequest:Connect(function() LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end) end elseif infinityJumpConnection then infinityJumpConnection:Disconnect(); infinityJumpConnection = nil end end)
+    createToggle(GeneralTabContent, "Infinity Jump", IsInfinityJumpEnabled, function(v) IsInfinityJumpEnabled = v; saveFeatureStates(); if v then if LocalPlayer.Character and LocalPlayer.Character.Humanoid then infinityJumpConnection = ConnectEvent(UserInputService.JumpRequest, function() LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end) end elseif infinityJumpConnection then infinityJumpConnection:Disconnect(); infinityJumpConnection = nil end end)
     createToggle(GeneralTabContent, "Mode Kebal", IsGodModeEnabled, ToggleGodMode) 
     createButton(GeneralTabContent, "Buka Touch Fling", CreateTouchFlingGUI)
     createToggle(GeneralTabContent, "Anti-Fling", antifling_enabled, ToggleAntiFling)
@@ -3152,7 +3088,7 @@ task.spawn(function()
     -- Koneksi MouseButton1Click yang lama untuk MiniToggleButton dihapus karena fungsinya
     -- sekarang sudah ditangani oleh argumen 'clickCallback' di dalam MakeDraggable.
 
-    EmoteToggleButton.MouseButton1Click:Connect(function()
+    ConnectEvent(EmoteToggleButton.MouseButton1Click, function()
         if EmoteScreenGui then
             local frame = EmoteScreenGui:FindFirstChild("MainFrame")
             if frame then
@@ -3162,7 +3098,7 @@ task.spawn(function()
         end
     end)
 
-    AnimationShowButton.MouseButton1Click:Connect(function()
+    ConnectEvent(AnimationShowButton.MouseButton1Click, function()
         if AnimationScreenGui then
             local frame = AnimationScreenGui:FindFirstChild("GazeBro")
             if frame then
@@ -3172,7 +3108,7 @@ task.spawn(function()
         end
     end)
     
-    UserInputService.InputBegan:Connect(function(input, processed) 
+    ConnectEvent(UserInputService.InputBegan, function(input, processed)
         if processed then return end; if input.KeyCode == Enum.KeyCode.F and not UserInputService.TouchEnabled then if not IsFlying then StartFly() else StopFly() end end 
     end)
     
@@ -3242,7 +3178,7 @@ task.spawn(function()
     
         if IsInfinityJumpEnabled then
             if infinityJumpConnection then infinityJumpConnection:Disconnect() end
-            infinityJumpConnection = UserInputService.JumpRequest:Connect(function()
+            infinityJumpConnection = ConnectEvent(UserInputService.JumpRequest, function()
                 if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
                     LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
                 end
@@ -3261,7 +3197,7 @@ task.spawn(function()
         applyAllAnimations(character)
     end
     
-    LocalPlayer.CharacterAdded:Connect(reapplyFeaturesOnRespawn)
+    ConnectEvent(LocalPlayer.CharacterAdded, reapplyFeaturesOnRespawn)
 
     -- INISIALISASI
     loadAnimations()
@@ -3276,10 +3212,22 @@ task.spawn(function()
     end
 
     -- Countdown Timer
-    local countdownConn = RunService.Heartbeat:Connect(function()
+    local countdownConn
+    countdownConn = RunService.Heartbeat:Connect(function()
+        if not ScreenGui or not ScreenGui.Parent then
+            countdownConn:Disconnect()
+            return
+        end
+
         local remainingSeconds = expirationTimestamp - os.time()
 
-        -- Perbarui label teks terlebih dahulu agar menampilkan "0s" sebelum keluar
+        if remainingSeconds < 1 then
+            countdownConn:Disconnect() -- Disconnect this timer itself
+            CloseScript() -- Perform total shutdown
+            return -- Stop the function
+        end
+
+        -- Update label text
         local days = math.floor(remainingSeconds / 86400)
         local rem = remainingSeconds % 86400
         local hours = math.floor(rem / 3600)
@@ -3288,26 +3236,6 @@ task.spawn(function()
         local seconds = rem % 60
         if ExpirationLabel and ExpirationLabel.Parent then
             ExpirationLabel.Text = string.format("Expires in: %dD %02dH %02dM %02dS", days, hours, minutes, seconds)
-        end
-
-        -- Sekarang periksa apakah waktu sudah habis
-        if remainingSeconds < 1 then
-            countdownConn:Disconnect() -- Hentikan loop ini
-
-            -- Lakukan penutupan fitur dan GUI secara bersih terlebih dahulu
-            CloseScript()
-
-            -- Beri jeda sejenak agar GUI sempat hilang dan terlihat lebih rapi
-            task.wait(0.2)
-
-            -- Paksa skrip berhenti dengan menendang pemain dari permainan
-            pcall(function()
-                game:GetService("Players").LocalPlayer:Kick("Waktu akses skrip telah habis.")
-            end)
-
-            -- Sebagai fallback terakhir jika kick gagal, masuk ke loop tak terbatas
-            -- untuk menggantung thread ini dan mencegah bagian lain dari skrip berjalan.
-            while true do task.wait(10) end
         end
     end)
     end -- End of InitializeMainGUI
