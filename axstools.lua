@@ -3291,7 +3291,7 @@ task.spawn(function()
     PromptTitleLabel.Size = UDim2.new(1, 0, 1, 0) -- Isi seluruh parent
     PromptTitleLabel.Position = UDim2.new(0, 0, 0, 0)
     PromptTitleLabel.BackgroundTransparency = 1
-    PromptTitleLabel.Text = "Authentication Required"
+    PromptTitleLabel.Text = "Password"
     PromptTitleLabel.Font = Enum.Font.SourceSansBold
     PromptTitleLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
     PromptTitleLabel.TextSize = 14
