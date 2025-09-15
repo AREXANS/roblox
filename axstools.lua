@@ -2745,12 +2745,12 @@ task.spawn(function()
     end
     
     local function CloseScript()
-        DisableAllFeatures()
-        ScreenGui:Destroy()
-        if touchFlingGui and touchFlingGui.Parent then touchFlingGui:Destroy() end
-        if SpectatorGui then SpectatorGui:Destroy() end
-        if spectateLocationGui then spectateLocationGui:Destroy() end
-        if flingStatusGui and flingStatusGui.Parent then flingStatusGui:Destroy() end
+        pcall(DisableAllFeatures)
+        pcall(function() if ScreenGui and ScreenGui.Parent then ScreenGui:Destroy() end end)
+        pcall(function() if touchFlingGui and touchFlingGui.Parent then touchFlingGui:Destroy() end end)
+        pcall(function() if SpectatorGui and SpectatorGui.Parent then SpectatorGui:Destroy() end end)
+        pcall(function() if spectateLocationGui and spectateLocationGui.Parent then spectateLocationGui:Destroy() end end)
+        pcall(function() if flingStatusGui and flingStatusGui.Parent then flingStatusGui:Destroy() end end)
     end
     
     -- ====================================================================
@@ -3279,22 +3279,36 @@ task.spawn(function()
     local countdownConn = RunService.Heartbeat:Connect(function()
         local remainingSeconds = expirationTimestamp - os.time()
 
-        if remainingSeconds <= 0 then
-            countdownConn:Disconnect() -- Stop the loop immediately
-            showNotification("Your access has expired.", Color3.fromRGB(200, 50, 50))
-            task.wait(0.1) -- Small delay to ensure notification is seen before closing
-            CloseScript()
-            return
+        -- Perbarui label teks terlebih dahulu agar menampilkan "0s" sebelum keluar
+        local days = math.floor(remainingSeconds / 86400)
+        local rem = remainingSeconds % 86400
+        local hours = math.floor(rem / 3600)
+        rem = rem % 3600
+        local minutes = math.floor(rem / 60)
+        local seconds = rem % 60
+        if ExpirationLabel and ExpirationLabel.Parent then
+            ExpirationLabel.Text = string.format("Expires in: %dD %02dH %02dM %02dS", days, hours, minutes, seconds)
         end
 
-        local days = math.floor(remainingSeconds / 86400)
-        remainingSeconds = remainingSeconds % 86400
-        local hours = math.floor(remainingSeconds / 3600)
-        remainingSeconds = remainingSeconds % 3600
-        local minutes = math.floor(remainingSeconds / 60)
-        local seconds = remainingSeconds % 60
+        -- Sekarang periksa apakah waktu sudah habis
+        if remainingSeconds < 1 then
+            countdownConn:Disconnect() -- Hentikan loop ini
 
-        ExpirationLabel.Text = string.format("Expires in: %dD %02dH %02dM %02dS", days, hours, minutes, seconds)
+            -- Lakukan penutupan fitur dan GUI secara bersih terlebih dahulu
+            CloseScript()
+
+            -- Beri jeda sejenak agar GUI sempat hilang dan terlihat lebih rapi
+            task.wait(0.2)
+
+            -- Paksa skrip berhenti dengan menendang pemain dari permainan
+            pcall(function()
+                game:GetService("Players").LocalPlayer:Kick("Waktu akses skrip telah habis.")
+            end)
+
+            -- Sebagai fallback terakhir jika kick gagal, masuk ke loop tak terbatas
+            -- untuk menggantung thread ini dan mencegah bagian lain dari skrip berjalan.
+            while true do task.wait(10) end
+        end
     end)
     end -- End of InitializeMainGUI
 
