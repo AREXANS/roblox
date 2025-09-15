@@ -2496,7 +2496,7 @@ task.spawn(function()
         
         -- Setup variabel untuk kontrol kamera
         local cameraRotationSensitivity = 0.004
-        local cameraMoveSpeed = 15
+        local cameraMoveSpeed = 50
         local moveVector = Vector2.new(0, 0)
         local isJoystickActive = false
         local rotationInput = nil
@@ -2569,7 +2569,7 @@ task.spawn(function()
         end)
         
         local joystickEndedConn = UserInputService.InputEnded:Connect(function(input)
-            if joystickInput and input.UserInputType == joystickInput.UserInputType then
+            if joystickInput and input == joystickInput then
                 isJoystickActive = false
                 joystickInput = nil
                 moveVector = Vector2.new(0, 0)
