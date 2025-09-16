@@ -30,15 +30,70 @@ task.spawn(function()
         return os.time({year=tonumber(y), month=tonumber(mo), day=tonumber(d), hour=tonumber(h), min=tonumber(mi), sec=tonumber(s)})
     end
 
-    local function InitializeMainGUI(expirationTimestamp)
-        -- [[ PERUBAHAN BESAR: Pengelola Koneksi untuk Total Shutdown ]]
-        local AllConnections = {}
-        local function ConnectEvent(event, func)
-            local conn = event:Connect(func)
-            table.insert(AllConnections, conn)
-            return conn
-        end
+    -- [[ PERUBAHAN BESAR: Pengelola Koneksi untuk Total Shutdown ]]
+    local AllConnections = {}
+    local function ConnectEvent(event, func)
+        local conn = event:Connect(func)
+        table.insert(AllConnections, conn)
+        return conn
+    end
 
+    -- [[ FUNGSI DRAGGABLE YANG DISEMPURNAKAN ]] --
+    local function MakeDraggable(guiObject, dragHandle, isDraggableCheck, clickCallback)
+        local UserInputService = game:GetService("UserInputService") -- [FIX] Get service locally
+        ConnectEvent(dragHandle.InputBegan, function(input, gameProcessedEvent)
+            if gameProcessedEvent then return end
+            if not (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then return end
+
+            if isDraggableCheck and not isDraggableCheck() then
+                if clickCallback then
+                    clickCallback()
+                end
+                return
+            end
+
+            local isDragging = false
+            local dragStartMousePos = input.Position
+            local startObjectPos = guiObject.Position
+
+            local inputChangedConnection
+            local inputEndedConnection
+
+            local DRAG_THRESHOLD = 10
+
+            inputChangedConnection = UserInputService.InputChanged:Connect(function(changedInput)
+                if changedInput.UserInputType == input.UserInputType then
+                    local delta = changedInput.Position - dragStartMousePos
+
+                    if not isDragging and delta.Magnitude > DRAG_THRESHOLD then
+                        isDragging = true
+                    end
+
+                    if isDragging then
+                        guiObject.Position = UDim2.new(
+                            startObjectPos.X.Scale, startObjectPos.X.Offset + delta.X,
+                            startObjectPos.Y.Scale, startObjectPos.Y.Offset + delta.Y
+                        )
+                    end
+                end
+            end)
+
+            inputEndedConnection = UserInputService.InputEnded:Connect(function(endedInput)
+                 if endedInput.UserInputType == input.UserInputType then
+                    if inputChangedConnection then inputChangedConnection:Disconnect() end
+                    if inputEndedConnection then inputEndedConnection:Disconnect() end
+
+                    if isDragging then
+                        -- No longer auto-saves, user must use button
+                    elseif clickCallback then
+                        clickCallback()
+                    end
+                 end
+            end)
+        end)
+    end
+
+    local function InitializeMainGUI(expirationTimestamp)
         -- Layanan dan Variabel Global
         local Players = game:GetService("Players")
         local UserInputService = game:GetService("UserInputService")
@@ -879,73 +934,6 @@ task.spawn(function()
         if FOVPart and FOVPart:FindFirstChild("FOVGui") then FOVPart.FOVGui.Size = UDim2.new(Settings.AimbotFOV * 2 / 50, 0, Settings.AimbotFOV * 2 / 50, 0) end
     end
 
-    -- [[ FUNGSI DRAGGABLE YANG DISEMPURNAKAN ]] --
-    -- Fungsi ini telah diperbaiki untuk memberikan pengalaman menggeser (drag) yang lebih mulus dan nyaman,
-    -- terutama pada perangkat layar sentuh. Ambang batas (threshold) untuk memulai drag telah ditingkatkan
-    -- untuk mencegah pergerakan yang tidak disengaja saat pengguna hanya ingin menekan tombol.
-    -- Posisi GUI juga akan otomatis tersimpan setelah selesai digeser.
-    local function MakeDraggable(guiObject, dragHandle, isDraggableCheck, clickCallback)
-        ConnectEvent(dragHandle.InputBegan, function(input, gameProcessedEvent)
-            if gameProcessedEvent then return end
-            if not (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then return end
-            
-            -- Cek apakah drag diizinkan pada saat ini
-            if isDraggableCheck and not isDraggableCheck() then 
-                -- Jika tidak diizinkan dan ada callback klik, jalankan klik saja
-                if clickCallback then
-                    clickCallback()
-                end
-                return 
-            end
-
-            local isDragging = false
-            local dragStartMousePos = input.Position
-            local startObjectPos = guiObject.Position
-            
-            local inputChangedConnection
-            local inputEndedConnection
-
-            -- Ambang batas yang lebih besar untuk mencegah drag yang tidak disengaja saat mengetuk
-            local DRAG_THRESHOLD = 10 
-
-            inputChangedConnection = UserInputService.InputChanged:Connect(function(changedInput)
-                if changedInput.UserInputType == input.UserInputType then
-                    local delta = changedInput.Position - dragStartMousePos
-                    
-                    -- Hanya mulai drag jika pergerakan melebihi ambang batas
-                    if not isDragging and delta.Magnitude > DRAG_THRESHOLD then
-                        isDragging = true
-                    end
-                    
-                    if isDragging then
-                        -- Perbarui posisi GUI secara real-time
-                        guiObject.Position = UDim2.new(
-                            startObjectPos.X.Scale, startObjectPos.X.Offset + delta.X,
-                            startObjectPos.Y.Scale, startObjectPos.Y.Offset + delta.Y
-                        )
-                    end
-                end
-            end)
-
-            inputEndedConnection = UserInputService.InputEnded:Connect(function(endedInput)
-                 if endedInput.UserInputType == input.UserInputType then
-                    -- Hentikan dan bersihkan semua koneksi event agar tidak ada memory leak
-                    if inputChangedConnection then inputChangedConnection:Disconnect() end
-                    if inputEndedConnection then inputEndedConnection:Disconnect() end
-
-                    if isDragging then
-                        -- Posisi tidak lagi disimpan secara otomatis setelah selesai menggeser.
-                        -- Simpan hanya dilakukan melalui tombol di menu Pengaturan.
-                        -- saveGuiPositions()
-                    elseif clickCallback then
-                        -- Jika tidak ada pergeseran (dianggap klik), panggil callback jika ada
-                        clickCallback()
-                    end
-                 end
-            end)
-        end)
-    end
-    
     -- ====================================================================
     -- == BAGIAN FUNGSI EMOTE ASLI (DIKEMBALIKAN)                      ==
     -- ====================================================================
