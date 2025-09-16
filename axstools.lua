@@ -93,6 +93,52 @@ task.spawn(function()
         end)
     end
 
+    -- [PERUBAHAN] Variabel path file dipindahkan ke lingkup luar
+    local SAVE_FOLDER = "ArexansTools"
+    if isfolder and not isfolder(SAVE_FOLDER) then
+        pcall(makefolder, SAVE_FOLDER)
+    end
+    local TELEPORT_SAVE_FILE = SAVE_FOLDER .. "/ArexansTools_Teleports_" .. tostring(game.PlaceId) .. ".json"
+    local GUI_POSITIONS_SAVE_FILE = SAVE_FOLDER .. "/ArexansTools_GuiPositions_" .. tostring(game.PlaceId) .. ".json"
+    local FEATURE_STATES_SAVE_FILE = SAVE_FOLDER .. "/ArexansTools_FeatureStates_" .. tostring(game.PlaceId) .. ".json"
+    local ANIMATION_SAVE_FILE = SAVE_FOLDER .. "/ArexansTools_Animations.json"
+    local SESSION_SAVE_FILE = SAVE_FOLDER .. "/ArexansTools_Session.json"
+
+    -- [[ PERUBAHAN BARU: Fungsi untuk mengelola sesi login dipindahkan ke lingkup luar ]]
+    local function saveSession(expirationTimestamp)
+        if not writefile then return end
+        local sessionData = {
+            expiration = expirationTimestamp
+        }
+        pcall(function()
+            writefile(SESSION_SAVE_FILE, HttpService:JSONEncode(sessionData))
+        end)
+    end
+
+    local function loadSession()
+        if not readfile or not isfile or not isfile(SESSION_SAVE_FILE) then
+            return nil
+        end
+        local success, result = pcall(function()
+            local content = readfile(SESSION_SAVE_FILE)
+            local data = HttpService:JSONDecode(content)
+            if type(data) == "table" and data.expiration and os.time() < data.expiration then
+                return data.expiration
+            end
+            return nil
+        end)
+        if success and result then
+            return result
+        end
+        return nil
+    end
+
+    local function deleteSession()
+        if isfile and isfile(SESSION_SAVE_FILE) and delfile then
+            pcall(delfile, SESSION_SAVE_FILE)
+        end
+    end
+
     local function InitializeMainGUI(expirationTimestamp)
         -- Layanan dan Variabel Global
         local Players = game:GetService("Players")
@@ -184,22 +230,13 @@ task.spawn(function()
     local isEmoteTransparent = true
     local isAnimationTransparent = true
 
-    -- [PERUBAHAN] Variabel folder penyimpanan dan path file
-    local SAVE_FOLDER = "ArexansTools"
-    if isfolder and not isfolder(SAVE_FOLDER) then
-        pcall(makefolder, SAVE_FOLDER)
-    end
-
     -- Variabel Teleport
     local savedTeleportLocations = {}
-    local TELEPORT_SAVE_FILE = SAVE_FOLDER .. "/ArexansTools_Teleports_" .. tostring(game.PlaceId) .. ".json"
     
     -- Variabel untuk menyimpan posisi GUI
-    local GUI_POSITIONS_SAVE_FILE = SAVE_FOLDER .. "/ArexansTools_GuiPositions_" .. tostring(game.PlaceId) .. ".json"
     local loadedGuiPositions = nil
     
     -- Variabel untuk menyimpan status fitur
-    local FEATURE_STATES_SAVE_FILE = SAVE_FOLDER .. "/ArexansTools_FeatureStates_" .. tostring(game.PlaceId) .. ".json"
     
     -- Variabel untuk menyimpan data original karakter saat invisible
     local originalCharacterAppearance = {}
@@ -227,7 +264,6 @@ task.spawn(function()
     
     -- Variabel Global untuk menyimpan animasi
     local lastAnimations = {}
-    local ANIMATION_SAVE_FILE = SAVE_FOLDER .. "/ArexansTools_Animations.json"
 
     -- Membuat GUI utama
     local ScreenGui = Instance.new("ScreenGui")
@@ -1971,7 +2007,6 @@ task.spawn(function()
             end
 
             invisChair.CFrame = savedpos
-            showNotification("Invisible Ghost Diaktifkan", Color3.fromRGB(50, 200, 50))
         else
             setTransparency(char, 0)
             if invisChair and invisChair.Parent then
@@ -1982,7 +2017,6 @@ task.spawn(function()
                 oldChair:Destroy()
             end
             invisChair = nil
-            showNotification("Invisible Ghost Dinonaktifkan", Color3.fromRGB(200, 150, 50))
         end
     end
     -- [[ END INVISIBLE GHOST INTEGRATION ]]
@@ -2729,7 +2763,7 @@ task.spawn(function()
         if IsEspBodyEnabled then ToggleESPBody(false) end
         -- [[ PERUBAHAN SELESAI ]]
     end
-    
+
     local function CloseScript()
         -- Pertama, putuskan setiap koneksi yang telah dibuat oleh skrip.
         for _, conn in ipairs(AllConnections) do
@@ -2750,6 +2784,11 @@ task.spawn(function()
         pcall(function() if AnimationScreenGui and AnimationScreenGui.Parent then AnimationScreenGui:Destroy() end end)
     end
     
+    local function HandleLogout()
+        deleteSession()
+        CloseScript()
+    end
+
     -- ====================================================================
     -- == BAGIAN PEMBUATAN ELEMEN UI (SLIDER, TOGGLE, DLL)             ==
     -- ====================================================================
@@ -3100,6 +3139,20 @@ task.spawn(function()
         end 
     end)
 
+    -- Fungsi untuk membuka/menutup jendela utama, dipisahkan agar bisa dipanggil oleh MakeDraggable
+    local function toggleMainFrame()
+        MainFrame.Visible = not MainFrame.Visible
+        MiniToggleButton.Text = MainFrame.Visible and "◀" or "▶"
+        MiniToggleButton.BackgroundTransparency = MainFrame.Visible and 0.5 or 1
+        if MainFrame.Visible then
+            if not (PlayerTabContent.Visible or GeneralTabContent.Visible or CombatTabContent.Visible or TeleportTabContent.Visible or SettingsTabContent.Visible or VipTabContent.Visible) then
+                switchTab("Player")
+            else
+                updatePlayerList()
+            end
+        end
+    end
+
     -- Tab Pengaturan
     createToggle(SettingsTabContent, "Kunci Bar Tombol", not isMiniToggleDraggable, function(v) isMiniToggleDraggable = not v end).LayoutOrder = 1
     createToggle(SettingsTabContent, "Transparansi Emote", isEmoteTransparent, function(v)
@@ -3120,7 +3173,12 @@ task.spawn(function()
     createButton(SettingsTabContent, "Hop Server", function() HopServer() end).LayoutOrder = 6
     createToggle(SettingsTabContent, "Anti-Lag", IsAntiLagEnabled, ToggleAntiLag).LayoutOrder = 7
     createToggle(SettingsTabContent, "Boost FPS", IsBoostFPSEnabled, ToggleBoostFPS).LayoutOrder = 8
-    createButton(SettingsTabContent, "Tutup Skrip", CloseScript).LayoutOrder = 9
+    createButton(SettingsTabContent, "Tutup", CloseScript).LayoutOrder = 9
+
+    -- [[ PERUBAHAN BARU: Tombol Logout ditambahkan ]]
+    local logoutButton = createButton(SettingsTabContent, "Logout", HandleLogout)
+    logoutButton.LayoutOrder = 10
+    logoutButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
     
     -- =================================================================================
     -- == BAGIAN UTAMA DAN KONEKSI EVENT                                              ==
@@ -3128,20 +3186,6 @@ task.spawn(function()
     
     MakeDraggable(MainFrame, TitleBar, function() return true end, nil)
     
-    -- Fungsi untuk membuka/menutup jendela utama, dipisahkan agar bisa dipanggil oleh MakeDraggable
-    local function toggleMainFrame()
-        MainFrame.Visible = not MainFrame.Visible
-        MiniToggleButton.Text = MainFrame.Visible and "◀" or "▶"
-        MiniToggleButton.BackgroundTransparency = MainFrame.Visible and 0.5 or 1
-        if MainFrame.Visible then
-            if not (PlayerTabContent.Visible or GeneralTabContent.Visible or CombatTabContent.Visible or TeleportTabContent.Visible or SettingsTabContent.Visible or VipTabContent.Visible) then
-                switchTab("Player")
-            else
-                updatePlayerList()
-            end
-        end
-    end
-
     -- [PERBAIKAN] Sekarang, tombol ◀ (MiniToggleButton) menjadi satu-satunya handle untuk menggeser
     -- kontainernya (MiniToggleContainer). Ini meniru perilaku jendela utama di mana TitleBar
     -- digunakan untuk menggeser MainFrame. Logika klik dan geser kini disatukan.
@@ -3308,140 +3352,151 @@ task.spawn(function()
     end)
     end -- End of InitializeMainGUI
 
-    -- Password logic will be added here
-    local success, passwordData = pcall(function()
-        local rawData = game:HttpGet("https://raw.githubusercontent.com/AREXANS/emoteff/refs/heads/main/password.json")
-        return HttpService:JSONDecode(rawData)
-    end)
+    local function CreatePasswordPromptGUI(passwordData)
+        -- ====================================================================
+        -- == BAGIAN GUI PROMPT PASSWORD                                   ==
+        -- ====================================================================
+        local PasswordScreenGui = Instance.new("ScreenGui")
+        PasswordScreenGui.Name = "PasswordPromptGUI"
+        PasswordScreenGui.Parent = CoreGui
+        PasswordScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        PasswordScreenGui.ResetOnSpawn = false
 
-    if not success or not passwordData then
-        warn("Could not fetch or parse password file.", passwordData)
-        -- In a real scenario, you'd want a more user-friendly error GUI
-        return
+        local PromptFrame = Instance.new("Frame")
+        PromptFrame.Name = "PromptFrame"
+        PromptFrame.Size = UDim2.new(0, 250, 0, 150)
+        PromptFrame.Position = UDim2.new(0.5, -125, 0.5, -75)
+        PromptFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        PromptFrame.BackgroundTransparency = 0.5
+        PromptFrame.BorderSizePixel = 0
+        PromptFrame.Parent = PasswordScreenGui
+
+        local PromptCorner = Instance.new("UICorner", PromptFrame)
+        PromptCorner.CornerRadius = UDim.new(0, 8)
+        local PromptStroke = Instance.new("UIStroke", PromptFrame)
+        PromptStroke.Color = Color3.fromRGB(0, 150, 255)
+        PromptStroke.Thickness = 2
+        PromptStroke.Transparency = 0.5
+
+        -- [MODIFIKASI] Mengubah Title menjadi TextButton untuk handle drag
+        local PromptTitle = Instance.new("TextButton")
+        PromptTitle.Name = "Title"
+        PromptTitle.Size = UDim2.new(1, 0, 0, 30)
+        PromptTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        PromptTitle.Text = "" -- Teks judul akan diatur oleh label terpisah
+        PromptTitle.AutoButtonColor = false
+        PromptTitle.Parent = PromptFrame
+
+        local PromptTitleLabel = Instance.new("TextLabel", PromptTitle)
+        PromptTitleLabel.Name = "TitleLabel"
+        PromptTitleLabel.Size = UDim2.new(1, 0, 1, 0) -- Isi seluruh parent
+        PromptTitleLabel.Position = UDim2.new(0, 0, 0, 0)
+        PromptTitleLabel.BackgroundTransparency = 1
+        PromptTitleLabel.Text = "Password"
+        PromptTitleLabel.Font = Enum.Font.SourceSansBold
+        PromptTitleLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
+        PromptTitleLabel.TextSize = 14
+        PromptTitleLabel.TextXAlignment = Enum.TextXAlignment.Center -- Pusatkan teks
+
+        -- [MODIFIKASI] Menambahkan Tombol Close (X)
+        local CloseButton = Instance.new("TextButton")
+        CloseButton.Name = "CloseButton"
+        CloseButton.Size = UDim2.new(0, 20, 0, 20)
+        CloseButton.Position = UDim2.new(1, -15, 0.5, 0) -- Posisi disesuaikan
+        CloseButton.AnchorPoint = Vector2.new(0.5, 0.5)
+        CloseButton.BackgroundTransparency = 1
+        CloseButton.Font = Enum.Font.SourceSansBold
+        CloseButton.Text = "X"
+        CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        CloseButton.TextSize = 18
+        CloseButton.Parent = PromptTitle
+        CloseButton.MouseButton1Click:Connect(function()
+            PasswordScreenGui:Destroy()
+        end)
+
+        -- [MODIFIKASI] Membuat jendela dapat digeser
+        pcall(function()
+            MakeDraggable(PromptFrame, PromptTitle, function() return true end, nil)
+        end)
+
+        local PasswordBox = Instance.new("TextBox", PromptFrame)
+        PasswordBox.Name = "PasswordBox"
+        PasswordBox.Size = UDim2.new(1, -20, 0, 30)
+        PasswordBox.Position = UDim2.new(0, 10, 0, 40)
+        PasswordBox.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        PasswordBox.TextColor3 = Color3.fromRGB(220, 220, 220)
+        PasswordBox.PlaceholderText = "Enter Password..."
+        PasswordBox.Text = ""
+        PasswordBox.Font = Enum.Font.SourceSans
+        PasswordBox.TextSize = 14
+        PasswordBox.ClearTextOnFocus = false
+        local PassCorner = Instance.new("UICorner", PasswordBox)
+        PassCorner.CornerRadius = UDim.new(0, 5)
+
+        local SubmitButton = Instance.new("TextButton", PromptFrame)
+        SubmitButton.Name = "SubmitButton"
+        SubmitButton.Size = UDim2.new(1, -20, 0, 30)
+        SubmitButton.Position = UDim2.new(0, 10, 0, 80)
+        SubmitButton.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+        SubmitButton.Text = "Login"
+        SubmitButton.Font = Enum.Font.SourceSansBold
+        SubmitButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        SubmitButton.TextSize = 14
+        local SubmitCorner = Instance.new("UICorner", SubmitButton)
+        SubmitCorner.CornerRadius = UDim.new(0, 5)
+
+        local StatusLabel = Instance.new("TextLabel", PromptFrame)
+        StatusLabel.Name = "StatusLabel"
+        StatusLabel.Size = UDim2.new(1, -20, 0, 20)
+        StatusLabel.Position = UDim2.new(0, 10, 1, -25)
+        StatusLabel.BackgroundTransparency = 1
+        StatusLabel.Text = ""
+        StatusLabel.Font = Enum.Font.SourceSans
+        StatusLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
+        StatusLabel.TextSize = 12
+
+        SubmitButton.MouseButton1Click:Connect(function()
+            local enteredPassword = PasswordBox.Text
+            local valid = false
+            local expiration
+
+            for _, data in ipairs(passwordData) do
+                if data.password == enteredPassword then
+                    expiration = parseISO8601(data.expired)
+                    if expiration and os.time() < expiration then
+                        valid = true
+                        break
+                    end
+                end
+            end
+
+            if valid then
+                pcall(saveSession, expiration) -- Simpan sesi setelah login berhasil
+                PasswordScreenGui:Destroy()
+                InitializeMainGUI(expiration)
+            else
+                StatusLabel.Text = "Password incorrect or expired."
+            end
+        end)
     end
 
     -- ====================================================================
-    -- == BAGIAN GUI PROMPT PASSWORD                                   ==
+    -- == LOGIKA EKSEKUSI UTAMA                                        ==
     -- ====================================================================
-    local PasswordScreenGui = Instance.new("ScreenGui")
-    PasswordScreenGui.Name = "PasswordPromptGUI"
-    PasswordScreenGui.Parent = CoreGui
-    PasswordScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    PasswordScreenGui.ResetOnSpawn = false
+    local savedExpiration = loadSession()
+    if savedExpiration then
+        InitializeMainGUI(savedExpiration)
+    else
+        -- Gagal memuat sesi, perlu login manual
+        local success, passwordData = pcall(function()
+            local rawData = game:HttpGet("https://raw.githubusercontent.com/AREXANS/emoteff/refs/heads/main/password.json")
+            return HttpService:JSONDecode(rawData)
+        end)
 
-    local PromptFrame = Instance.new("Frame")
-    PromptFrame.Name = "PromptFrame"
-    PromptFrame.Size = UDim2.new(0, 250, 0, 150)
-    PromptFrame.Position = UDim2.new(0.5, -125, 0.5, -75)
-    PromptFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    PromptFrame.BackgroundTransparency = 0.5
-    PromptFrame.BorderSizePixel = 0
-    PromptFrame.Parent = PasswordScreenGui
-
-    local PromptCorner = Instance.new("UICorner", PromptFrame)
-    PromptCorner.CornerRadius = UDim.new(0, 8)
-    local PromptStroke = Instance.new("UIStroke", PromptFrame)
-    PromptStroke.Color = Color3.fromRGB(0, 150, 255)
-    PromptStroke.Thickness = 2
-    PromptStroke.Transparency = 0.5
-
-    -- [MODIFIKASI] Mengubah Title menjadi TextButton untuk handle drag
-    local PromptTitle = Instance.new("TextButton")
-    PromptTitle.Name = "Title"
-    PromptTitle.Size = UDim2.new(1, 0, 0, 30)
-    PromptTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    PromptTitle.Text = "" -- Teks judul akan diatur oleh label terpisah
-    PromptTitle.AutoButtonColor = false
-    PromptTitle.Parent = PromptFrame
-
-    local PromptTitleLabel = Instance.new("TextLabel", PromptTitle)
-    PromptTitleLabel.Name = "TitleLabel"
-    PromptTitleLabel.Size = UDim2.new(1, 0, 1, 0) -- Isi seluruh parent
-    PromptTitleLabel.Position = UDim2.new(0, 0, 0, 0)
-    PromptTitleLabel.BackgroundTransparency = 1
-    PromptTitleLabel.Text = "Password"
-    PromptTitleLabel.Font = Enum.Font.SourceSansBold
-    PromptTitleLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
-    PromptTitleLabel.TextSize = 14
-    PromptTitleLabel.TextXAlignment = Enum.TextXAlignment.Center -- Pusatkan teks
-
-    -- [MODIFIKASI] Menambahkan Tombol Close (X)
-    local CloseButton = Instance.new("TextButton")
-    CloseButton.Name = "CloseButton"
-    CloseButton.Size = UDim2.new(0, 20, 0, 20)
-    CloseButton.Position = UDim2.new(1, -15, 0.5, 0) -- Posisi disesuaikan
-    CloseButton.AnchorPoint = Vector2.new(0.5, 0.5)
-    CloseButton.BackgroundTransparency = 1
-    CloseButton.Font = Enum.Font.SourceSansBold
-    CloseButton.Text = "X"
-    CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    CloseButton.TextSize = 18
-    CloseButton.Parent = PromptTitle
-    CloseButton.MouseButton1Click:Connect(function()
-        PasswordScreenGui:Destroy()
-    end)
-
-    -- [MODIFIKASI] Membuat jendela dapat digeser
-    pcall(function()
-        MakeDraggable(PromptFrame, PromptTitle, function() return true end, nil)
-    end)
-
-    local PasswordBox = Instance.new("TextBox", PromptFrame)
-    PasswordBox.Name = "PasswordBox"
-    PasswordBox.Size = UDim2.new(1, -20, 0, 30)
-    PasswordBox.Position = UDim2.new(0, 10, 0, 40)
-    PasswordBox.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    PasswordBox.TextColor3 = Color3.fromRGB(220, 220, 220)
-    PasswordBox.PlaceholderText = "Enter Password..."
-    PasswordBox.Text = ""
-    PasswordBox.Font = Enum.Font.SourceSans
-    PasswordBox.TextSize = 14
-    PasswordBox.ClearTextOnFocus = false
-    local PassCorner = Instance.new("UICorner", PasswordBox)
-    PassCorner.CornerRadius = UDim.new(0, 5)
-
-    local SubmitButton = Instance.new("TextButton", PromptFrame)
-    SubmitButton.Name = "SubmitButton"
-    SubmitButton.Size = UDim2.new(1, -20, 0, 30)
-    SubmitButton.Position = UDim2.new(0, 10, 0, 80)
-    SubmitButton.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
-    SubmitButton.Text = "Login"
-    SubmitButton.Font = Enum.Font.SourceSansBold
-    SubmitButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    SubmitButton.TextSize = 14
-    local SubmitCorner = Instance.new("UICorner", SubmitButton)
-    SubmitCorner.CornerRadius = UDim.new(0, 5)
-
-    local StatusLabel = Instance.new("TextLabel", PromptFrame)
-    StatusLabel.Name = "StatusLabel"
-    StatusLabel.Size = UDim2.new(1, -20, 0, 20)
-    StatusLabel.Position = UDim2.new(0, 10, 1, -25)
-    StatusLabel.BackgroundTransparency = 1
-    StatusLabel.Text = ""
-    StatusLabel.Font = Enum.Font.SourceSans
-    StatusLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
-    StatusLabel.TextSize = 12
-
-    SubmitButton.MouseButton1Click:Connect(function()
-        local enteredPassword = PasswordBox.Text
-        local valid = false
-        local expiration
-
-        for _, data in ipairs(passwordData) do
-            if data.password == enteredPassword then
-                expiration = parseISO8601(data.expired)
-                if expiration and os.time() < expiration then
-                    valid = true
-                    break
-                end
-            end
-        end
-
-        if valid then
-            PasswordScreenGui:Destroy()
-            InitializeMainGUI(expiration)
+        if success and passwordData then
+            CreatePasswordPromptGUI(passwordData)
         else
-            StatusLabel.Text = "Password incorrect or expired."
+            warn("Could not fetch or parse password file.", passwordData)
         end
-    end)
+    end
 end)
