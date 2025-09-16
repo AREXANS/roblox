@@ -3112,13 +3112,13 @@ task.spawn(function()
     importButton.Size = UDim2.new(0.5, -2.5, 1, 0)
     
     -- Tombol untuk menyembunyikan ikon
-    createToggle(TeleportTabContent, "Tampilkan Ikon Aksi", areTeleportIconsVisible, function(v)
+    createToggle(TeleportTabContent, "Tampilkan Ikon", areTeleportIconsVisible, function(v)
         areTeleportIconsVisible = v
         updateTeleportIconVisibility()
     end).LayoutOrder = 4
     
     -- Tab VIP (Berisi Emote dan Animasi)
-    createToggle(VipTabContent, "Aktifkan Emote Asli", isEmoteEnabled, function(v) 
+    createToggle(VipTabContent, "Emote VIP", isEmoteEnabled, function(v) 
         isEmoteEnabled = v; 
         if isEmoteEnabled then 
             initializeEmoteGUI() 
@@ -3128,7 +3128,7 @@ task.spawn(function()
             EmoteToggleButton.Visible = false
         end 
     end)
-    createToggle(VipTabContent, "Aktifkan Animasi VIP", isAnimationEnabled, function(v) 
+    createToggle(VipTabContent, "Animasi VIP", isAnimationEnabled, function(v) 
         isAnimationEnabled = v; 
         if isAnimationEnabled then 
             initializeAnimationGUI() 
@@ -3155,11 +3155,11 @@ task.spawn(function()
 
     -- Tab Pengaturan
     createToggle(SettingsTabContent, "Kunci Bar Tombol", not isMiniToggleDraggable, function(v) isMiniToggleDraggable = not v end).LayoutOrder = 1
-    createToggle(SettingsTabContent, "Transparansi Emote", isEmoteTransparent, function(v)
+    createToggle(SettingsTabContent, "Emote Transparan", isEmoteTransparent, function(v)
         isEmoteTransparent = v
         if isEmoteEnabled and applyEmoteTransparency then applyEmoteTransparency(v) end
     end).LayoutOrder = 2
-    createToggle(SettingsTabContent, "Transparansi Animasi", isAnimationTransparent, function(v)
+    createToggle(SettingsTabContent, "Animasi transparan", isAnimationTransparent, function(v)
         isAnimationTransparent = v
         if isAnimationEnabled and applyAnimationTransparency then applyAnimationTransparency(v) end
     end).LayoutOrder = 3
