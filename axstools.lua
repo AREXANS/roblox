@@ -2672,6 +2672,7 @@ task.spawn(function()
     end
     
     local function CloseScript()
+        if countdownConn then countdownConn:Disconnect(); countdownConn = nil end
         -- Pertama, putuskan setiap koneksi yang telah dibuat oleh skrip.
         for _, conn in ipairs(AllConnections) do
             pcall(function() conn:Disconnect() end)
@@ -3070,8 +3071,13 @@ task.spawn(function()
     createButton(SettingsTabContent, "Hop Server", function() HopServer() end).LayoutOrder = 6
     createToggle(SettingsTabContent, "Anti-Lag", IsAntiLagEnabled, ToggleAntiLag).LayoutOrder = 7
     createToggle(SettingsTabContent, "Boost FPS", IsBoostFPSEnabled, ToggleBoostFPS).LayoutOrder = 8
-    createButton(SettingsTabContent, "Logout", DoLogout).LayoutOrder = 9
-    createButton(SettingsTabContent, "Tutup Skrip", CloseScript).LayoutOrder = 10
+
+    local closeButton = createButton(SettingsTabContent, "Tutup Skrip", CloseScript)
+    closeButton.LayoutOrder = 9
+
+    local logoutButton = createButton(SettingsTabContent, "Logout", DoLogout)
+    logoutButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    logoutButton.LayoutOrder = 10
     
     -- =================================================================================
     -- == BAGIAN UTAMA DAN KONEKSI EVENT                                              ==
