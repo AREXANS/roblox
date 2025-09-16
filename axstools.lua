@@ -30,70 +30,15 @@ task.spawn(function()
         return os.time({year=tonumber(y), month=tonumber(mo), day=tonumber(d), hour=tonumber(h), min=tonumber(mi), sec=tonumber(s)})
     end
 
-    -- [[ PERUBAHAN BESAR: Pengelola Koneksi untuk Total Shutdown ]]
-    local AllConnections = {}
-    local function ConnectEvent(event, func)
-        local conn = event:Connect(func)
-        table.insert(AllConnections, conn)
-        return conn
-    end
-
-    -- [[ FUNGSI DRAGGABLE YANG DISEMPURNAKAN ]] --
-    local function MakeDraggable(guiObject, dragHandle, isDraggableCheck, clickCallback)
-        local UserInputService = game:GetService("UserInputService") -- [FIX] Get service locally
-        ConnectEvent(dragHandle.InputBegan, function(input, gameProcessedEvent)
-            if gameProcessedEvent then return end
-            if not (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then return end
-
-            if isDraggableCheck and not isDraggableCheck() then
-                if clickCallback then
-                    clickCallback()
-                end
-                return
-            end
-
-            local isDragging = false
-            local dragStartMousePos = input.Position
-            local startObjectPos = guiObject.Position
-
-            local inputChangedConnection
-            local inputEndedConnection
-
-            local DRAG_THRESHOLD = 10
-
-            inputChangedConnection = UserInputService.InputChanged:Connect(function(changedInput)
-                if changedInput.UserInputType == input.UserInputType then
-                    local delta = changedInput.Position - dragStartMousePos
-
-                    if not isDragging and delta.Magnitude > DRAG_THRESHOLD then
-                        isDragging = true
-                    end
-
-                    if isDragging then
-                        guiObject.Position = UDim2.new(
-                            startObjectPos.X.Scale, startObjectPos.X.Offset + delta.X,
-                            startObjectPos.Y.Scale, startObjectPos.Y.Offset + delta.Y
-                        )
-                    end
-                end
-            end)
-
-            inputEndedConnection = UserInputService.InputEnded:Connect(function(endedInput)
-                 if endedInput.UserInputType == input.UserInputType then
-                    if inputChangedConnection then inputChangedConnection:Disconnect() end
-                    if inputEndedConnection then inputEndedConnection:Disconnect() end
-
-                    if isDragging then
-                        -- No longer auto-saves, user must use button
-                    elseif clickCallback then
-                        clickCallback()
-                    end
-                 end
-            end)
-        end)
-    end
-
     local function InitializeMainGUI(expirationTimestamp)
+        -- [[ PERUBAHAN BESAR: Pengelola Koneksi untuk Total Shutdown ]]
+        local AllConnections = {}
+        local function ConnectEvent(event, func)
+            local conn = event:Connect(func)
+            table.insert(AllConnections, conn)
+            return conn
+        end
+
         -- Layanan dan Variabel Global
         local Players = game:GetService("Players")
         local UserInputService = game:GetService("UserInputService")
@@ -145,11 +90,6 @@ task.spawn(function()
     local IsAntiLagEnabled = false 
     local antiLagConnection = nil 
     
-    -- [[ INVISIBLE GHOST INTEGRATION ]]
-    local IsInvisibleGhostEnabled = false
-    local invisChair = nil
-    -- [[ END INVISIBLE GHOST INTEGRATION ]]
-
     -- [[ PERUBAHAN DIMULAI: Variabel ESP dipisahkan ]]
     local IsEspNameEnabled = false
     local IsEspBodyEnabled = false
@@ -661,7 +601,6 @@ task.spawn(function()
             KillAura = IsKillAuraEnabled,
             Aimbot = IsAimbotEnabled,
             BoostFPS = IsBoostFPSEnabled,
-            InvisibleGhost = IsInvisibleGhostEnabled,
             -- [[ PERUBAHAN DIMULAI: Simpan status ESP terpisah ]]
             ESPName = IsEspNameEnabled,
             ESPBody = IsEspBodyEnabled,
@@ -696,7 +635,6 @@ task.spawn(function()
                 IsKillAuraEnabled = decodedData.KillAura or false
                 IsAimbotEnabled = decodedData.Aimbot or false
                 IsBoostFPSEnabled = decodedData.BoostFPS or false
-                IsInvisibleGhostEnabled = decodedData.InvisibleGhost or false
                 -- [[ PERUBAHAN DIMULAI: Muat status ESP terpisah ]]
                 IsEspNameEnabled = decodedData.ESPName or false
                 IsEspBodyEnabled = decodedData.ESPBody or false
@@ -869,6 +807,73 @@ task.spawn(function()
     
     local function UpdateFOVCircle()
         if FOVPart and FOVPart:FindFirstChild("FOVGui") then FOVPart.FOVGui.Size = UDim2.new(Settings.AimbotFOV * 2 / 50, 0, Settings.AimbotFOV * 2 / 50, 0) end
+    end
+
+    -- [[ FUNGSI DRAGGABLE YANG DISEMPURNAKAN ]] --
+    -- Fungsi ini telah diperbaiki untuk memberikan pengalaman menggeser (drag) yang lebih mulus dan nyaman,
+    -- terutama pada perangkat layar sentuh. Ambang batas (threshold) untuk memulai drag telah ditingkatkan
+    -- untuk mencegah pergerakan yang tidak disengaja saat pengguna hanya ingin menekan tombol.
+    -- Posisi GUI juga akan otomatis tersimpan setelah selesai digeser.
+    local function MakeDraggable(guiObject, dragHandle, isDraggableCheck, clickCallback)
+        ConnectEvent(dragHandle.InputBegan, function(input, gameProcessedEvent)
+            if gameProcessedEvent then return end
+            if not (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then return end
+
+            -- Cek apakah drag diizinkan pada saat ini
+            if isDraggableCheck and not isDraggableCheck() then
+                -- Jika tidak diizinkan dan ada callback klik, jalankan klik saja
+                if clickCallback then
+                    clickCallback()
+                end
+                return
+            end
+
+            local isDragging = false
+            local dragStartMousePos = input.Position
+            local startObjectPos = guiObject.Position
+
+            local inputChangedConnection
+            local inputEndedConnection
+
+            -- Ambang batas yang lebih besar untuk mencegah drag yang tidak disengaja saat mengetuk
+            local DRAG_THRESHOLD = 10
+
+            inputChangedConnection = UserInputService.InputChanged:Connect(function(changedInput)
+                if changedInput.UserInputType == input.UserInputType then
+                    local delta = changedInput.Position - dragStartMousePos
+
+                    -- Hanya mulai drag jika pergerakan melebihi ambang batas
+                    if not isDragging and delta.Magnitude > DRAG_THRESHOLD then
+                        isDragging = true
+                    end
+
+                    if isDragging then
+                        -- Perbarui posisi GUI secara real-time
+                        guiObject.Position = UDim2.new(
+                            startObjectPos.X.Scale, startObjectPos.X.Offset + delta.X,
+                            startObjectPos.Y.Scale, startObjectPos.Y.Offset + delta.Y
+                        )
+                    end
+                end
+            end)
+
+            inputEndedConnection = UserInputService.InputEnded:Connect(function(endedInput)
+                 if endedInput.UserInputType == input.UserInputType then
+                    -- Hentikan dan bersihkan semua koneksi event agar tidak ada memory leak
+                    if inputChangedConnection then inputChangedConnection:Disconnect() end
+                    if inputEndedConnection then inputEndedConnection:Disconnect() end
+
+                    if isDragging then
+                        -- Posisi tidak lagi disimpan secara otomatis setelah selesai menggeser.
+                        -- Simpan hanya dilakukan melalui tombol di menu Pengaturan.
+                        -- saveGuiPositions()
+                    elseif clickCallback then
+                        -- Jika tidak ada pergeseran (dianggap klik), panggil callback jika ada
+                        clickCallback()
+                    end
+                 end
+            end)
+        end)
     end
 
     -- ====================================================================
@@ -1924,69 +1929,6 @@ task.spawn(function()
         local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart"); if root and antifling_enabled then if root.Velocity.Magnitude <= antifling_velocity_threshold then antifling_last_safe_cframe = root.CFrame end; if root.Velocity.Magnitude > antifling_velocity_threshold and antifling_last_safe_cframe then root.Velocity, root.AssemblyLinearVelocity, root.AssemblyAngularVelocity, root.CFrame = Vector3.new(), Vector3.new(), Vector3.new(), antifling_last_safe_cframe end; if root.AssemblyAngularVelocity.Magnitude > antifling_angular_threshold then root.AssemblyAngularVelocity = Vector3.new() end; if LocalPlayer.Character.Humanoid:GetState() == Enum.HumanoidStateType.FallingDown then LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end end
     end
     
-    -- [[ INVISIBLE GHOST INTEGRATION ]]
-    local function setTransparency(char, val)
-        for _, p in ipairs(char:GetDescendants()) do
-            if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then
-                p.Transparency = val
-            end
-        end
-    end
-
-    local function ToggleInvisibleGhost(enabled)
-        IsInvisibleGhostEnabled = enabled
-        saveFeatureStates()
-
-        local char = LocalPlayer.Character
-        if not char or not char:FindFirstChild("HumanoidRootPart") then
-            if enabled then
-                IsInvisibleGhostEnabled = false
-                saveFeatureStates()
-            end
-            return
-        end
-
-        if enabled then
-            setTransparency(char, 0.5)
-            local savedpos = char.HumanoidRootPart.CFrame
-            task.wait()
-            char:MoveTo(Vector3.new(-25.95, 84, 3537.55))
-            task.wait(0.15)
-
-            if invisChair and invisChair.Parent then
-                invisChair:Destroy()
-            end
-            invisChair = Instance.new("Seat", Workspace)
-            invisChair.Anchored = false
-            invisChair.CanCollide = false
-            invisChair.Name = "invischair"
-            invisChair.Transparency = 1
-            invisChair.Position = Vector3.new(-25.95, 84, 3537.55)
-
-            local weldPart = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
-            if weldPart then
-                 local Weld = Instance.new("Weld", invisChair)
-                 Weld.Part0 = invisChair
-                 Weld.Part1 = weldPart
-            end
-
-            invisChair.CFrame = savedpos
-            showNotification("Invisible Ghost Diaktifkan", Color3.fromRGB(50, 200, 50))
-        else
-            setTransparency(char, 0)
-            if invisChair and invisChair.Parent then
-                invisChair:Destroy()
-            end
-            local oldChair = Workspace:FindFirstChild("invischair")
-            if oldChair then
-                oldChair:Destroy()
-            end
-            invisChair = nil
-            showNotification("Invisible Ghost Dinonaktifkan", Color3.fromRGB(200, 150, 50))
-        end
-    end
-    -- [[ END INVISIBLE GHOST INTEGRATION ]]
-
     local function ToggleAntiFling(enabled)
         antifling_enabled = enabled; saveFeatureStates(); if enabled and not antifling_connection then antifling_connection = RunService.Heartbeat:Connect(protect_character) elseif not enabled and antifling_connection then antifling_connection:Disconnect(); antifling_connection = nil end
     end
@@ -2718,7 +2660,6 @@ task.spawn(function()
 
         if IsFlying then if UserInputService.TouchEnabled then StopMobileFly() else StopFly() end end; if IsWalkSpeedEnabled then ToggleWalkSpeed(false) end; if IsNoclipEnabled then ToggleNoclip(false) end; if IsGodModeEnabled then ToggleGodMode(false) end; if IsKillAuraEnabled then ToggleKillAura(false) end; if IsAimbotEnabled then ToggleAimbot(false) end; if IsInfinityJumpEnabled then IsInfinityJumpEnabled = false; if infinityJumpConnection then infinityJumpConnection:Disconnect(); infinityJumpConnection = nil end end; if antifling_enabled then ToggleAntiFling(false) end; if IsAntiLagEnabled then ToggleAntiLag(false) end
         if IsBoostFPSEnabled then ToggleBoostFPS(false) end
-        if IsInvisibleGhostEnabled then ToggleInvisibleGhost(false) end
         if isEmoteEnabled then destroyEmoteGUI(); EmoteToggleButton.Visible = false end
         if isAnimationEnabled then destroyAnimationGUI(); AnimationShowButton.Visible = false end 
         if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then LocalPlayer.Character.Humanoid.WalkSpeed = OriginalWalkSpeed end
@@ -3012,7 +2953,6 @@ task.spawn(function()
     createToggle(GeneralTabContent, "Noclip", IsNoclipEnabled, function(v) ToggleNoclip(v) end)
     createToggle(GeneralTabContent, "Infinity Jump", IsInfinityJumpEnabled, function(v) IsInfinityJumpEnabled = v; saveFeatureStates(); if v then if LocalPlayer.Character and LocalPlayer.Character.Humanoid then infinityJumpConnection = ConnectEvent(UserInputService.JumpRequest, function() LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end) end elseif infinityJumpConnection then infinityJumpConnection:Disconnect(); infinityJumpConnection = nil end end)
     createToggle(GeneralTabContent, "Mode Kebal", IsGodModeEnabled, ToggleGodMode) 
-    createToggle(GeneralTabContent, "Invisible Ghost", IsInvisibleGhostEnabled, ToggleInvisibleGhost)
     createButton(GeneralTabContent, "Buka Touch Fling", CreateTouchFlingGUI)
     createToggle(GeneralTabContent, "Anti-Fling", antifling_enabled, ToggleAntiFling)
     
@@ -3100,6 +3040,16 @@ task.spawn(function()
         end 
     end)
 
+    -- [[ SESSION MANAGEMENT ]]
+    local function DoLogout()
+        CloseScript()
+        if deletefile then
+            pcall(deletefile, SESSION_SAVE_FILE)
+        end
+        showLoginFunc()
+    end
+    -- [[ END SESSION MANAGEMENT ]]
+
     -- Tab Pengaturan
     createToggle(SettingsTabContent, "Kunci Bar Tombol", not isMiniToggleDraggable, function(v) isMiniToggleDraggable = not v end).LayoutOrder = 1
     createToggle(SettingsTabContent, "Transparansi Emote", isEmoteTransparent, function(v)
@@ -3120,7 +3070,8 @@ task.spawn(function()
     createButton(SettingsTabContent, "Hop Server", function() HopServer() end).LayoutOrder = 6
     createToggle(SettingsTabContent, "Anti-Lag", IsAntiLagEnabled, ToggleAntiLag).LayoutOrder = 7
     createToggle(SettingsTabContent, "Boost FPS", IsBoostFPSEnabled, ToggleBoostFPS).LayoutOrder = 8
-    createButton(SettingsTabContent, "Tutup Skrip", CloseScript).LayoutOrder = 9
+    createButton(SettingsTabContent, "Logout", DoLogout).LayoutOrder = 9
+    createButton(SettingsTabContent, "Tutup Skrip", CloseScript).LayoutOrder = 10
     
     -- =================================================================================
     -- == BAGIAN UTAMA DAN KONEKSI EVENT                                              ==
@@ -3206,7 +3157,6 @@ task.spawn(function()
         if IsKillAuraEnabled then ToggleKillAura(true) end
         if IsAimbotEnabled then ToggleAimbot(true) end
         if IsBoostFPSEnabled then ToggleBoostFPS(true) end
-        if IsInvisibleGhostEnabled then ToggleInvisibleGhost(true) end
         -- [[ PERUBAHAN DIMULAI: Terapkan status ESP terpisah saat dimuat ]]
         if IsEspNameEnabled then ToggleESPName(true) end
         if IsEspBodyEnabled then ToggleESPBody(true) end
@@ -3215,11 +3165,6 @@ task.spawn(function()
     
     local function reapplyFeaturesOnRespawn(character)
         if not character then return end
-
-        if IsInvisibleGhostEnabled then
-            IsInvisibleGhostEnabled = false
-            saveFeatureStates()
-        end
     
         task.wait(0.2) 
     
