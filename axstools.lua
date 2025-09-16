@@ -30,15 +30,70 @@ task.spawn(function()
         return os.time({year=tonumber(y), month=tonumber(mo), day=tonumber(d), hour=tonumber(h), min=tonumber(mi), sec=tonumber(s)})
     end
 
-    local function InitializeMainGUI(expirationTimestamp)
-        -- [[ PERUBAHAN BESAR: Pengelola Koneksi untuk Total Shutdown ]]
-        local AllConnections = {}
-        local function ConnectEvent(event, func)
-            local conn = event:Connect(func)
-            table.insert(AllConnections, conn)
-            return conn
-        end
+    -- [[ PERUBAHAN BESAR: Pengelola Koneksi untuk Total Shutdown ]]
+    local AllConnections = {}
+    local function ConnectEvent(event, func)
+        local conn = event:Connect(func)
+        table.insert(AllConnections, conn)
+        return conn
+    end
 
+    -- [[ FUNGSI DRAGGABLE YANG DISEMPURNAKAN ]] --
+    local function MakeDraggable(guiObject, dragHandle, isDraggableCheck, clickCallback)
+        local UserInputService = game:GetService("UserInputService") -- [FIX] Get service locally
+        ConnectEvent(dragHandle.InputBegan, function(input, gameProcessedEvent)
+            if gameProcessedEvent then return end
+            if not (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then return end
+
+            if isDraggableCheck and not isDraggableCheck() then
+                if clickCallback then
+                    clickCallback()
+                end
+                return
+            end
+
+            local isDragging = false
+            local dragStartMousePos = input.Position
+            local startObjectPos = guiObject.Position
+
+            local inputChangedConnection
+            local inputEndedConnection
+
+            local DRAG_THRESHOLD = 10
+
+            inputChangedConnection = UserInputService.InputChanged:Connect(function(changedInput)
+                if changedInput.UserInputType == input.UserInputType then
+                    local delta = changedInput.Position - dragStartMousePos
+
+                    if not isDragging and delta.Magnitude > DRAG_THRESHOLD then
+                        isDragging = true
+                    end
+
+                    if isDragging then
+                        guiObject.Position = UDim2.new(
+                            startObjectPos.X.Scale, startObjectPos.X.Offset + delta.X,
+                            startObjectPos.Y.Scale, startObjectPos.Y.Offset + delta.Y
+                        )
+                    end
+                end
+            end)
+
+            inputEndedConnection = UserInputService.InputEnded:Connect(function(endedInput)
+                 if endedInput.UserInputType == input.UserInputType then
+                    if inputChangedConnection then inputChangedConnection:Disconnect() end
+                    if inputEndedConnection then inputEndedConnection:Disconnect() end
+
+                    if isDragging then
+                        -- No longer auto-saves, user must use button
+                    elseif clickCallback then
+                        clickCallback()
+                    end
+                 end
+            end)
+        end)
+    end
+
+    local function InitializeMainGUI(expirationTimestamp, showLoginFunc)
         -- Layanan dan Variabel Global
         local Players = game:GetService("Players")
         local UserInputService = game:GetService("UserInputService")
@@ -90,6 +145,11 @@ task.spawn(function()
     local IsAntiLagEnabled = false 
     local antiLagConnection = nil 
     
+    -- [[ INVISIBLE GHOST INTEGRATION ]]
+    local IsInvisibleGhostEnabled = false
+    local invisChair = nil
+    -- [[ END INVISIBLE GHOST INTEGRATION ]]
+
     -- [[ PERUBAHAN DIMULAI: Variabel ESP dipisahkan ]]
     local IsEspNameEnabled = false
     local IsEspBodyEnabled = false
@@ -141,6 +201,10 @@ task.spawn(function()
     -- Variabel untuk menyimpan status fitur
     local FEATURE_STATES_SAVE_FILE = SAVE_FOLDER .. "/ArexansTools_FeatureStates_" .. tostring(game.PlaceId) .. ".json"
     
+    -- [[ SESSION MANAGEMENT ]]
+    local SESSION_SAVE_FILE = SAVE_FOLDER .. "/ArexansTools_Session.json"
+    -- [[ END SESSION MANAGEMENT ]]
+
     -- Variabel untuk menyimpan data original karakter saat invisible
     local originalCharacterAppearance = {}
 
@@ -601,6 +665,7 @@ task.spawn(function()
             KillAura = IsKillAuraEnabled,
             Aimbot = IsAimbotEnabled,
             BoostFPS = IsBoostFPSEnabled,
+            InvisibleGhost = IsInvisibleGhostEnabled,
             -- [[ PERUBAHAN DIMULAI: Simpan status ESP terpisah ]]
             ESPName = IsEspNameEnabled,
             ESPBody = IsEspBodyEnabled,
@@ -635,6 +700,7 @@ task.spawn(function()
                 IsKillAuraEnabled = decodedData.KillAura or false
                 IsAimbotEnabled = decodedData.Aimbot or false
                 IsBoostFPSEnabled = decodedData.BoostFPS or false
+                IsInvisibleGhostEnabled = decodedData.InvisibleGhost or false
                 -- [[ PERUBAHAN DIMULAI: Muat status ESP terpisah ]]
                 IsEspNameEnabled = decodedData.ESPName or false
                 IsEspBodyEnabled = decodedData.ESPBody or false
@@ -807,73 +873,6 @@ task.spawn(function()
     
     local function UpdateFOVCircle()
         if FOVPart and FOVPart:FindFirstChild("FOVGui") then FOVPart.FOVGui.Size = UDim2.new(Settings.AimbotFOV * 2 / 50, 0, Settings.AimbotFOV * 2 / 50, 0) end
-    end
-
-    -- [[ FUNGSI DRAGGABLE YANG DISEMPURNAKAN ]] --
-    -- Fungsi ini telah diperbaiki untuk memberikan pengalaman menggeser (drag) yang lebih mulus dan nyaman,
-    -- terutama pada perangkat layar sentuh. Ambang batas (threshold) untuk memulai drag telah ditingkatkan
-    -- untuk mencegah pergerakan yang tidak disengaja saat pengguna hanya ingin menekan tombol.
-    -- Posisi GUI juga akan otomatis tersimpan setelah selesai digeser.
-    local function MakeDraggable(guiObject, dragHandle, isDraggableCheck, clickCallback)
-        ConnectEvent(dragHandle.InputBegan, function(input, gameProcessedEvent)
-            if gameProcessedEvent then return end
-            if not (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then return end
-
-            -- Cek apakah drag diizinkan pada saat ini
-            if isDraggableCheck and not isDraggableCheck() then
-                -- Jika tidak diizinkan dan ada callback klik, jalankan klik saja
-                if clickCallback then
-                    clickCallback()
-                end
-                return
-            end
-
-            local isDragging = false
-            local dragStartMousePos = input.Position
-            local startObjectPos = guiObject.Position
-
-            local inputChangedConnection
-            local inputEndedConnection
-
-            -- Ambang batas yang lebih besar untuk mencegah drag yang tidak disengaja saat mengetuk
-            local DRAG_THRESHOLD = 10
-
-            inputChangedConnection = UserInputService.InputChanged:Connect(function(changedInput)
-                if changedInput.UserInputType == input.UserInputType then
-                    local delta = changedInput.Position - dragStartMousePos
-
-                    -- Hanya mulai drag jika pergerakan melebihi ambang batas
-                    if not isDragging and delta.Magnitude > DRAG_THRESHOLD then
-                        isDragging = true
-                    end
-
-                    if isDragging then
-                        -- Perbarui posisi GUI secara real-time
-                        guiObject.Position = UDim2.new(
-                            startObjectPos.X.Scale, startObjectPos.X.Offset + delta.X,
-                            startObjectPos.Y.Scale, startObjectPos.Y.Offset + delta.Y
-                        )
-                    end
-                end
-            end)
-
-            inputEndedConnection = UserInputService.InputEnded:Connect(function(endedInput)
-                 if endedInput.UserInputType == input.UserInputType then
-                    -- Hentikan dan bersihkan semua koneksi event agar tidak ada memory leak
-                    if inputChangedConnection then inputChangedConnection:Disconnect() end
-                    if inputEndedConnection then inputEndedConnection:Disconnect() end
-
-                    if isDragging then
-                        -- Posisi tidak lagi disimpan secara otomatis setelah selesai menggeser.
-                        -- Simpan hanya dilakukan melalui tombol di menu Pengaturan.
-                        -- saveGuiPositions()
-                    elseif clickCallback then
-                        -- Jika tidak ada pergeseran (dianggap klik), panggil callback jika ada
-                        clickCallback()
-                    end
-                 end
-            end)
-        end)
     end
 
     -- ====================================================================
@@ -1928,6 +1927,69 @@ task.spawn(function()
     local function protect_character()
         local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart"); if root and antifling_enabled then if root.Velocity.Magnitude <= antifling_velocity_threshold then antifling_last_safe_cframe = root.CFrame end; if root.Velocity.Magnitude > antifling_velocity_threshold and antifling_last_safe_cframe then root.Velocity, root.AssemblyLinearVelocity, root.AssemblyAngularVelocity, root.CFrame = Vector3.new(), Vector3.new(), Vector3.new(), antifling_last_safe_cframe end; if root.AssemblyAngularVelocity.Magnitude > antifling_angular_threshold then root.AssemblyAngularVelocity = Vector3.new() end; if LocalPlayer.Character.Humanoid:GetState() == Enum.HumanoidStateType.FallingDown then LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end end
     end
+
+    -- [[ INVISIBLE GHOST INTEGRATION ]]
+    local function setTransparency(char, val)
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then
+                p.Transparency = val
+            end
+        end
+    end
+
+    local function ToggleInvisibleGhost(enabled)
+        IsInvisibleGhostEnabled = enabled
+        saveFeatureStates()
+
+        local char = LocalPlayer.Character
+        if not char or not char:FindFirstChild("HumanoidRootPart") then
+            if enabled then
+                IsInvisibleGhostEnabled = false
+                saveFeatureStates()
+            end
+            return
+        end
+
+        if enabled then
+            setTransparency(char, 0.5)
+            local savedpos = char.HumanoidRootPart.CFrame
+            task.wait()
+            char:MoveTo(Vector3.new(-25.95, 84, 3537.55))
+            task.wait(0.15)
+
+            if invisChair and invisChair.Parent then
+                invisChair:Destroy()
+            end
+            invisChair = Instance.new("Seat", Workspace)
+            invisChair.Anchored = false
+            invisChair.CanCollide = false
+            invisChair.Name = "invischair"
+            invisChair.Transparency = 1
+            invisChair.Position = Vector3.new(-25.95, 84, 3537.55)
+
+            local weldPart = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+            if weldPart then
+                 local Weld = Instance.new("Weld", invisChair)
+                 Weld.Part0 = invisChair
+                 Weld.Part1 = weldPart
+            end
+
+            invisChair.CFrame = savedpos
+            showNotification("Invisible Ghost Diaktifkan", Color3.fromRGB(50, 200, 50))
+        else
+            setTransparency(char, 0)
+            if invisChair and invisChair.Parent then
+                invisChair:Destroy()
+            end
+            local oldChair = Workspace:FindFirstChild("invischair")
+            if oldChair then
+                oldChair:Destroy()
+            end
+            invisChair = nil
+            showNotification("Invisible Ghost Dinonaktifkan", Color3.fromRGB(200, 150, 50))
+        end
+    end
+    -- [[ END INVISIBLE GHOST INTEGRATION ]]
     
     local function ToggleAntiFling(enabled)
         antifling_enabled = enabled; saveFeatureStates(); if enabled and not antifling_connection then antifling_connection = RunService.Heartbeat:Connect(protect_character) elseif not enabled and antifling_connection then antifling_connection:Disconnect(); antifling_connection = nil end
@@ -2660,6 +2722,7 @@ task.spawn(function()
 
         if IsFlying then if UserInputService.TouchEnabled then StopMobileFly() else StopFly() end end; if IsWalkSpeedEnabled then ToggleWalkSpeed(false) end; if IsNoclipEnabled then ToggleNoclip(false) end; if IsGodModeEnabled then ToggleGodMode(false) end; if IsKillAuraEnabled then ToggleKillAura(false) end; if IsAimbotEnabled then ToggleAimbot(false) end; if IsInfinityJumpEnabled then IsInfinityJumpEnabled = false; if infinityJumpConnection then infinityJumpConnection:Disconnect(); infinityJumpConnection = nil end end; if antifling_enabled then ToggleAntiFling(false) end; if IsAntiLagEnabled then ToggleAntiLag(false) end
         if IsBoostFPSEnabled then ToggleBoostFPS(false) end
+        if IsInvisibleGhostEnabled then ToggleInvisibleGhost(false) end
         if isEmoteEnabled then destroyEmoteGUI(); EmoteToggleButton.Visible = false end
         if isAnimationEnabled then destroyAnimationGUI(); AnimationShowButton.Visible = false end 
         if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then LocalPlayer.Character.Humanoid.WalkSpeed = OriginalWalkSpeed end
@@ -2954,6 +3017,7 @@ task.spawn(function()
     createToggle(GeneralTabContent, "Noclip", IsNoclipEnabled, function(v) ToggleNoclip(v) end)
     createToggle(GeneralTabContent, "Infinity Jump", IsInfinityJumpEnabled, function(v) IsInfinityJumpEnabled = v; saveFeatureStates(); if v then if LocalPlayer.Character and LocalPlayer.Character.Humanoid then infinityJumpConnection = ConnectEvent(UserInputService.JumpRequest, function() LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end) end elseif infinityJumpConnection then infinityJumpConnection:Disconnect(); infinityJumpConnection = nil end end)
     createToggle(GeneralTabContent, "Mode Kebal", IsGodModeEnabled, ToggleGodMode) 
+    createToggle(GeneralTabContent, "Invisible Ghost", IsInvisibleGhostEnabled, ToggleInvisibleGhost)
     createButton(GeneralTabContent, "Buka Touch Fling", CreateTouchFlingGUI)
     createToggle(GeneralTabContent, "Anti-Fling", antifling_enabled, ToggleAntiFling)
     
@@ -3163,6 +3227,7 @@ task.spawn(function()
         if IsKillAuraEnabled then ToggleKillAura(true) end
         if IsAimbotEnabled then ToggleAimbot(true) end
         if IsBoostFPSEnabled then ToggleBoostFPS(true) end
+        if IsInvisibleGhostEnabled then ToggleInvisibleGhost(true) end
         -- [[ PERUBAHAN DIMULAI: Terapkan status ESP terpisah saat dimuat ]]
         if IsEspNameEnabled then ToggleESPName(true) end
         if IsEspBodyEnabled then ToggleESPBody(true) end
@@ -3171,6 +3236,11 @@ task.spawn(function()
     
     local function reapplyFeaturesOnRespawn(character)
         if not character then return end
+
+        if IsInvisibleGhostEnabled then
+            IsInvisibleGhostEnabled = false
+            saveFeatureStates()
+        end
     
         task.wait(0.2) 
     
@@ -3271,128 +3341,165 @@ task.spawn(function()
         return
     end
 
-    -- ====================================================================
-    -- == BAGIAN GUI PROMPT PASSWORD                                   ==
-    -- ====================================================================
-    local PasswordScreenGui = Instance.new("ScreenGui")
-    PasswordScreenGui.Name = "PasswordPromptGUI"
-    PasswordScreenGui.Parent = CoreGui
-    PasswordScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    PasswordScreenGui.ResetOnSpawn = false
+    local function ShowLoginScreen()
+        -- ====================================================================
+        -- == BAGIAN GUI PROMPT PASSWORD                                   ==
+        -- ====================================================================
+        local PasswordScreenGui = Instance.new("ScreenGui")
+        PasswordScreenGui.Name = "PasswordPromptGUI"
+        PasswordScreenGui.Parent = CoreGui
+        PasswordScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        PasswordScreenGui.ResetOnSpawn = false
 
-    local PromptFrame = Instance.new("Frame")
-    PromptFrame.Name = "PromptFrame"
-    PromptFrame.Size = UDim2.new(0, 250, 0, 150)
-    PromptFrame.Position = UDim2.new(0.5, -125, 0.5, -75)
-    PromptFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    PromptFrame.BackgroundTransparency = 0.5
-    PromptFrame.BorderSizePixel = 0
-    PromptFrame.Parent = PasswordScreenGui
+        local PromptFrame = Instance.new("Frame")
+        PromptFrame.Name = "PromptFrame"
+        PromptFrame.Size = UDim2.new(0, 250, 0, 150)
+        PromptFrame.Position = UDim2.new(0.5, -125, 0.5, -75)
+        PromptFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        PromptFrame.BackgroundTransparency = 0.5
+        PromptFrame.BorderSizePixel = 0
+        PromptFrame.Parent = PasswordScreenGui
 
-    local PromptCorner = Instance.new("UICorner", PromptFrame)
-    PromptCorner.CornerRadius = UDim.new(0, 8)
-    local PromptStroke = Instance.new("UIStroke", PromptFrame)
-    PromptStroke.Color = Color3.fromRGB(0, 150, 255)
-    PromptStroke.Thickness = 2
-    PromptStroke.Transparency = 0.5
+        local PromptCorner = Instance.new("UICorner", PromptFrame)
+        PromptCorner.CornerRadius = UDim.new(0, 8)
+        local PromptStroke = Instance.new("UIStroke", PromptFrame)
+        PromptStroke.Color = Color3.fromRGB(0, 150, 255)
+        PromptStroke.Thickness = 2
+        PromptStroke.Transparency = 0.5
 
-    -- [MODIFIKASI] Mengubah Title menjadi TextButton untuk handle drag
-    local PromptTitle = Instance.new("TextButton")
-    PromptTitle.Name = "Title"
-    PromptTitle.Size = UDim2.new(1, 0, 0, 30)
-    PromptTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    PromptTitle.Text = "" -- Teks judul akan diatur oleh label terpisah
-    PromptTitle.AutoButtonColor = false
-    PromptTitle.Parent = PromptFrame
+        -- [MODIFIKASI] Mengubah Title menjadi TextButton untuk handle drag
+        local PromptTitle = Instance.new("TextButton")
+        PromptTitle.Name = "Title"
+        PromptTitle.Size = UDim2.new(1, 0, 0, 30)
+        PromptTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        PromptTitle.Text = "" -- Teks judul akan diatur oleh label terpisah
+        PromptTitle.AutoButtonColor = false
+        PromptTitle.Parent = PromptFrame
 
-    local PromptTitleLabel = Instance.new("TextLabel", PromptTitle)
-    PromptTitleLabel.Name = "TitleLabel"
-    PromptTitleLabel.Size = UDim2.new(1, 0, 1, 0) -- Isi seluruh parent
-    PromptTitleLabel.Position = UDim2.new(0, 0, 0, 0)
-    PromptTitleLabel.BackgroundTransparency = 1
-    PromptTitleLabel.Text = "Password"
-    PromptTitleLabel.Font = Enum.Font.SourceSansBold
-    PromptTitleLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
-    PromptTitleLabel.TextSize = 14
-    PromptTitleLabel.TextXAlignment = Enum.TextXAlignment.Center -- Pusatkan teks
+        local PromptTitleLabel = Instance.new("TextLabel", PromptTitle)
+        PromptTitleLabel.Name = "TitleLabel"
+        PromptTitleLabel.Size = UDim2.new(1, 0, 1, 0) -- Isi seluruh parent
+        PromptTitleLabel.Position = UDim2.new(0, 0, 0, 0)
+        PromptTitleLabel.BackgroundTransparency = 1
+        PromptTitleLabel.Text = "Password"
+        PromptTitleLabel.Font = Enum.Font.SourceSansBold
+        PromptTitleLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
+        PromptTitleLabel.TextSize = 14
+        PromptTitleLabel.TextXAlignment = Enum.TextXAlignment.Center -- Pusatkan teks
 
-    -- [MODIFIKASI] Menambahkan Tombol Close (X)
-    local CloseButton = Instance.new("TextButton")
-    CloseButton.Name = "CloseButton"
-    CloseButton.Size = UDim2.new(0, 20, 0, 20)
-    CloseButton.Position = UDim2.new(1, -15, 0.5, 0) -- Posisi disesuaikan
-    CloseButton.AnchorPoint = Vector2.new(0.5, 0.5)
-    CloseButton.BackgroundTransparency = 1
-    CloseButton.Font = Enum.Font.SourceSansBold
-    CloseButton.Text = "X"
-    CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    CloseButton.TextSize = 18
-    CloseButton.Parent = PromptTitle
-    CloseButton.MouseButton1Click:Connect(function()
-        PasswordScreenGui:Destroy()
-    end)
+        -- [MODIFIKASI] Menambahkan Tombol Close (X)
+        local CloseButton = Instance.new("TextButton")
+        CloseButton.Name = "CloseButton"
+        CloseButton.Size = UDim2.new(0, 20, 0, 20)
+        CloseButton.Position = UDim2.new(1, -15, 0.5, 0) -- Posisi disesuaikan
+        CloseButton.AnchorPoint = Vector2.new(0.5, 0.5)
+        CloseButton.BackgroundTransparency = 1
+        CloseButton.Font = Enum.Font.SourceSansBold
+        CloseButton.Text = "X"
+        CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        CloseButton.TextSize = 18
+        CloseButton.Parent = PromptTitle
+        CloseButton.MouseButton1Click:Connect(function()
+            PasswordScreenGui:Destroy()
+        end)
 
-    -- [MODIFIKASI] Membuat jendela dapat digeser
-    pcall(function()
-        MakeDraggable(PromptFrame, PromptTitle, function() return true end, nil)
-    end)
+        -- [MODIFIKASI] Membuat jendela dapat digeser
+        pcall(function()
+            MakeDraggable(PromptFrame, PromptTitle, function() return true end, nil)
+        end)
 
-    local PasswordBox = Instance.new("TextBox", PromptFrame)
-    PasswordBox.Name = "PasswordBox"
-    PasswordBox.Size = UDim2.new(1, -20, 0, 30)
-    PasswordBox.Position = UDim2.new(0, 10, 0, 40)
-    PasswordBox.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    PasswordBox.TextColor3 = Color3.fromRGB(220, 220, 220)
-    PasswordBox.PlaceholderText = "Enter Password..."
-    PasswordBox.Text = ""
-    PasswordBox.Font = Enum.Font.SourceSans
-    PasswordBox.TextSize = 14
-    PasswordBox.ClearTextOnFocus = false
-    local PassCorner = Instance.new("UICorner", PasswordBox)
-    PassCorner.CornerRadius = UDim.new(0, 5)
+        local PasswordBox = Instance.new("TextBox", PromptFrame)
+        PasswordBox.Name = "PasswordBox"
+        PasswordBox.Size = UDim2.new(1, -20, 0, 30)
+        PasswordBox.Position = UDim2.new(0, 10, 0, 40)
+        PasswordBox.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        PasswordBox.TextColor3 = Color3.fromRGB(220, 220, 220)
+        PasswordBox.PlaceholderText = "Enter Password..."
+        PasswordBox.Text = ""
+        PasswordBox.Font = Enum.Font.SourceSans
+        PasswordBox.TextSize = 14
+        PasswordBox.ClearTextOnFocus = false
+        local PassCorner = Instance.new("UICorner", PasswordBox)
+        PassCorner.CornerRadius = UDim.new(0, 5)
 
-    local SubmitButton = Instance.new("TextButton", PromptFrame)
-    SubmitButton.Name = "SubmitButton"
-    SubmitButton.Size = UDim2.new(1, -20, 0, 30)
-    SubmitButton.Position = UDim2.new(0, 10, 0, 80)
-    SubmitButton.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
-    SubmitButton.Text = "Login"
-    SubmitButton.Font = Enum.Font.SourceSansBold
-    SubmitButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    SubmitButton.TextSize = 14
-    local SubmitCorner = Instance.new("UICorner", SubmitButton)
-    SubmitCorner.CornerRadius = UDim.new(0, 5)
+        local SubmitButton = Instance.new("TextButton", PromptFrame)
+        SubmitButton.Name = "SubmitButton"
+        SubmitButton.Size = UDim2.new(1, -20, 0, 30)
+        SubmitButton.Position = UDim2.new(0, 10, 0, 80)
+        SubmitButton.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+        SubmitButton.Text = "Login"
+        SubmitButton.Font = Enum.Font.SourceSansBold
+        SubmitButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        SubmitButton.TextSize = 14
+        local SubmitCorner = Instance.new("UICorner", SubmitButton)
+        SubmitCorner.CornerRadius = UDim.new(0, 5)
 
-    local StatusLabel = Instance.new("TextLabel", PromptFrame)
-    StatusLabel.Name = "StatusLabel"
-    StatusLabel.Size = UDim2.new(1, -20, 0, 20)
-    StatusLabel.Position = UDim2.new(0, 10, 1, -25)
-    StatusLabel.BackgroundTransparency = 1
-    StatusLabel.Text = ""
-    StatusLabel.Font = Enum.Font.SourceSans
-    StatusLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
-    StatusLabel.TextSize = 12
+        local StatusLabel = Instance.new("TextLabel", PromptFrame)
+        StatusLabel.Name = "StatusLabel"
+        StatusLabel.Size = UDim2.new(1, -20, 0, 20)
+        StatusLabel.Position = UDim2.new(0, 10, 1, -25)
+        StatusLabel.BackgroundTransparency = 1
+        StatusLabel.Text = ""
+        StatusLabel.Font = Enum.Font.SourceSans
+        StatusLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
+        StatusLabel.TextSize = 12
 
-    SubmitButton.MouseButton1Click:Connect(function()
-        local enteredPassword = PasswordBox.Text
-        local valid = false
-        local expiration
+        SubmitButton.MouseButton1Click:Connect(function()
+            local enteredPassword = PasswordBox.Text
+            local valid = false
+            local expiration
 
-        for _, data in ipairs(passwordData) do
-            if data.password == enteredPassword then
-                expiration = parseISO8601(data.expired)
-                if expiration and os.time() < expiration then
-                    valid = true
-                    break
+            for _, data in ipairs(passwordData) do
+                if data.password == enteredPassword then
+                    expiration = parseISO8601(data.expired)
+                    if expiration and os.time() < expiration then
+                        valid = true
+                        break
+                    end
                 end
             end
-        end
 
-        if valid then
-            PasswordScreenGui:Destroy()
-            InitializeMainGUI(expiration)
-        else
-            StatusLabel.Text = "Password incorrect or expired."
+            if valid then
+                if writefile then
+                    local sessionData = HttpService:JSONEncode({password = enteredPassword})
+                    pcall(writefile, SESSION_SAVE_FILE, sessionData)
+                end
+                PasswordScreenGui:Destroy()
+                InitializeMainGUI(expiration, ShowLoginScreen)
+            else
+                StatusLabel.Text = "Password incorrect or expired."
+            end
+        end)
+    end
+
+    -- [[ SESSION MANAGEMENT ]]
+    if readfile and isfile and isfile(SESSION_SAVE_FILE) then
+        local success, savedData = pcall(function()
+            return HttpService:JSONDecode(readfile(SESSION_SAVE_FILE))
+        end)
+
+        if success and savedData and type(savedData.password) == "string" then
+            local savedPassword = savedData.password
+            local valid = false
+            local expiration
+
+            for _, data in ipairs(passwordData) do
+                if data.password == savedPassword then
+                    expiration = parseISO8601(data.expired)
+                    if expiration and os.time() < expiration then
+                        valid = true
+                        break
+                    end
+                end
+            end
+
+            if valid then
+                InitializeMainGUI(expiration, ShowLoginScreen)
+                return
+            end
         end
-    end)
+    end
+    -- [[ END SESSION MANAGEMENT ]]
+
+    ShowLoginScreen()
 end)
