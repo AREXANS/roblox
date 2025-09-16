@@ -532,69 +532,6 @@ task.spawn(function()
         return button
     end
     
-    -- [[ INVISIBLE GHOST INTEGRATION ]]
-    local function setTransparency(char, val)
-        for _, p in ipairs(char:GetDescendants()) do
-            if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then
-                p.Transparency = val
-            end
-        end
-    end
-
-    local function ToggleInvisibleGhost(enabled)
-        IsInvisibleGhostEnabled = enabled
-        saveFeatureStates()
-
-        local char = LocalPlayer.Character
-        if not char or not char:FindFirstChild("HumanoidRootPart") then
-            if enabled then
-                IsInvisibleGhostEnabled = false
-                saveFeatureStates()
-            end
-            return
-        end
-
-        if enabled then
-            setTransparency(char, 0.5)
-            local savedpos = char.HumanoidRootPart.CFrame
-            task.wait()
-            char:MoveTo(Vector3.new(-25.95, 84, 3537.55))
-            task.wait(0.15)
-
-            if invisChair and invisChair.Parent then
-                invisChair:Destroy()
-            end
-            invisChair = Instance.new("Seat", Workspace)
-            invisChair.Anchored = false
-            invisChair.CanCollide = false
-            invisChair.Name = "invischair"
-            invisChair.Transparency = 1
-            invisChair.Position = Vector3.new(-25.95, 84, 3537.55)
-
-            local weldPart = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
-            if weldPart then
-                 local Weld = Instance.new("Weld", invisChair)
-                 Weld.Part0 = invisChair
-                 Weld.Part1 = weldPart
-            end
-
-            invisChair.CFrame = savedpos
-            showNotification("Invisible Ghost Diaktifkan", Color3.fromRGB(50, 200, 50))
-        else
-            setTransparency(char, 0)
-            if invisChair and invisChair.Parent then
-                invisChair:Destroy()
-            end
-            local oldChair = Workspace:FindFirstChild("invischair")
-            if oldChair then
-                oldChair:Destroy()
-            end
-            invisChair = nil
-            showNotification("Invisible Ghost Dinonaktifkan", Color3.fromRGB(200, 150, 50))
-        end
-    end
-    -- [[ END INVISIBLE GHOST INTEGRATION ]]
-
     -- ====================================================================
     -- == BAGIAN TELEPORT DAN FUNGSI UTILITAS                          ==
     -- ====================================================================
@@ -1987,6 +1924,69 @@ task.spawn(function()
         local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart"); if root and antifling_enabled then if root.Velocity.Magnitude <= antifling_velocity_threshold then antifling_last_safe_cframe = root.CFrame end; if root.Velocity.Magnitude > antifling_velocity_threshold and antifling_last_safe_cframe then root.Velocity, root.AssemblyLinearVelocity, root.AssemblyAngularVelocity, root.CFrame = Vector3.new(), Vector3.new(), Vector3.new(), antifling_last_safe_cframe end; if root.AssemblyAngularVelocity.Magnitude > antifling_angular_threshold then root.AssemblyAngularVelocity = Vector3.new() end; if LocalPlayer.Character.Humanoid:GetState() == Enum.HumanoidStateType.FallingDown then LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end end
     end
     
+    -- [[ INVISIBLE GHOST INTEGRATION ]]
+    local function setTransparency(char, val)
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then
+                p.Transparency = val
+            end
+        end
+    end
+
+    local function ToggleInvisibleGhost(enabled)
+        IsInvisibleGhostEnabled = enabled
+        saveFeatureStates()
+
+        local char = LocalPlayer.Character
+        if not char or not char:FindFirstChild("HumanoidRootPart") then
+            if enabled then
+                IsInvisibleGhostEnabled = false
+                saveFeatureStates()
+            end
+            return
+        end
+
+        if enabled then
+            setTransparency(char, 0.5)
+            local savedpos = char.HumanoidRootPart.CFrame
+            task.wait()
+            char:MoveTo(Vector3.new(-25.95, 84, 3537.55))
+            task.wait(0.15)
+
+            if invisChair and invisChair.Parent then
+                invisChair:Destroy()
+            end
+            invisChair = Instance.new("Seat", Workspace)
+            invisChair.Anchored = false
+            invisChair.CanCollide = false
+            invisChair.Name = "invischair"
+            invisChair.Transparency = 1
+            invisChair.Position = Vector3.new(-25.95, 84, 3537.55)
+
+            local weldPart = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+            if weldPart then
+                 local Weld = Instance.new("Weld", invisChair)
+                 Weld.Part0 = invisChair
+                 Weld.Part1 = weldPart
+            end
+
+            invisChair.CFrame = savedpos
+            showNotification("Invisible Ghost Diaktifkan", Color3.fromRGB(50, 200, 50))
+        else
+            setTransparency(char, 0)
+            if invisChair and invisChair.Parent then
+                invisChair:Destroy()
+            end
+            local oldChair = Workspace:FindFirstChild("invischair")
+            if oldChair then
+                oldChair:Destroy()
+            end
+            invisChair = nil
+            showNotification("Invisible Ghost Dinonaktifkan", Color3.fromRGB(200, 150, 50))
+        end
+    end
+    -- [[ END INVISIBLE GHOST INTEGRATION ]]
+
     local function ToggleAntiFling(enabled)
         antifling_enabled = enabled; saveFeatureStates(); if enabled and not antifling_connection then antifling_connection = RunService.Heartbeat:Connect(protect_character) elseif not enabled and antifling_connection then antifling_connection:Disconnect(); antifling_connection = nil end
     end
