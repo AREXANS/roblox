@@ -2594,9 +2594,12 @@ task.spawn(function()
         end)
         local swipeChangedConn = UserInputService.InputChanged:Connect(function(input,gpe)
             if gpe or not isSpectatingLocation or not rotationInput or input~=rotationInput then return end
-            local delta = input.Delta
-            camYaw = camYaw - delta.X * cameraRotationSensitivity
-            camPitch = math.clamp(camPitch - delta.Y * cameraRotationSensitivity,-1.4,1.4)
+            --[[ ROTASI DINONAKTIFKAN: Logika pembaruan rotasi kamera dari gesekan layar dikomentari
+                 sesuai permintaan untuk mencegah pergerakan kamera yang tidak diinginkan.
+                 Hanya pergerakan via joystick yang akan berfungsi. ]]
+            -- local delta = input.Delta
+            -- camYaw = camYaw - delta.X * cameraRotationSensitivity
+            -- camPitch = math.clamp(camPitch - delta.Y * cameraRotationSensitivity,-1.4,1.4)
         end)
         local swipeEndedConn = UserInputService.InputEnded:Connect(function(input,gpe)
             if input==rotationInput then rotationInput=nil end
