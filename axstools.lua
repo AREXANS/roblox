@@ -90,6 +90,11 @@ task.spawn(function()
     local IsAntiLagEnabled = false 
     local antiLagConnection = nil 
     
+    -- [[ INVISIBLE GHOST INTEGRATION ]]
+    local IsInvisibleGhostEnabled = false
+    local invisChair = nil
+    -- [[ END INVISIBLE GHOST INTEGRATION ]]
+
     -- [[ PERUBAHAN DIMULAI: Variabel ESP dipisahkan ]]
     local IsEspNameEnabled = false
     local IsEspBodyEnabled = false
@@ -472,6 +477,69 @@ task.spawn(function()
         return button
     end
     
+    -- [[ INVISIBLE GHOST INTEGRATION ]]
+    local function setTransparency(char, val)
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then
+                p.Transparency = val
+            end
+        end
+    end
+
+    local function ToggleInvisibleGhost(enabled)
+        IsInvisibleGhostEnabled = enabled
+        saveFeatureStates()
+
+        local char = LocalPlayer.Character
+        if not char or not char:FindFirstChild("HumanoidRootPart") then
+            if enabled then
+                IsInvisibleGhostEnabled = false
+                saveFeatureStates()
+            end
+            return
+        end
+
+        if enabled then
+            setTransparency(char, 0.5)
+            local savedpos = char.HumanoidRootPart.CFrame
+            task.wait()
+            char:MoveTo(Vector3.new(-25.95, 84, 3537.55))
+            task.wait(0.15)
+
+            if invisChair and invisChair.Parent then
+                invisChair:Destroy()
+            end
+            invisChair = Instance.new("Seat", Workspace)
+            invisChair.Anchored = false
+            invisChair.CanCollide = false
+            invisChair.Name = "invischair"
+            invisChair.Transparency = 1
+            invisChair.Position = Vector3.new(-25.95, 84, 3537.55)
+
+            local weldPart = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+            if weldPart then
+                 local Weld = Instance.new("Weld", invisChair)
+                 Weld.Part0 = invisChair
+                 Weld.Part1 = weldPart
+            end
+
+            invisChair.CFrame = savedpos
+            showNotification("Invisible Ghost Diaktifkan", Color3.fromRGB(50, 200, 50))
+        else
+            setTransparency(char, 0)
+            if invisChair and invisChair.Parent then
+                invisChair:Destroy()
+            end
+            local oldChair = Workspace:FindFirstChild("invischair")
+            if oldChair then
+                oldChair:Destroy()
+            end
+            invisChair = nil
+            showNotification("Invisible Ghost Dinonaktifkan", Color3.fromRGB(200, 150, 50))
+        end
+    end
+    -- [[ END INVISIBLE GHOST INTEGRATION ]]
+
     -- ====================================================================
     -- == BAGIAN TELEPORT DAN FUNGSI UTILITAS                          ==
     -- ====================================================================
@@ -601,6 +669,7 @@ task.spawn(function()
             KillAura = IsKillAuraEnabled,
             Aimbot = IsAimbotEnabled,
             BoostFPS = IsBoostFPSEnabled,
+            InvisibleGhost = IsInvisibleGhostEnabled,
             -- [[ PERUBAHAN DIMULAI: Simpan status ESP terpisah ]]
             ESPName = IsEspNameEnabled,
             ESPBody = IsEspBodyEnabled,
@@ -635,6 +704,7 @@ task.spawn(function()
                 IsKillAuraEnabled = decodedData.KillAura or false
                 IsAimbotEnabled = decodedData.Aimbot or false
                 IsBoostFPSEnabled = decodedData.BoostFPS or false
+                IsInvisibleGhostEnabled = decodedData.InvisibleGhost or false
                 -- [[ PERUBAHAN DIMULAI: Muat status ESP terpisah ]]
                 IsEspNameEnabled = decodedData.ESPName or false
                 IsEspBodyEnabled = decodedData.ESPBody or false
@@ -2660,6 +2730,7 @@ task.spawn(function()
 
         if IsFlying then if UserInputService.TouchEnabled then StopMobileFly() else StopFly() end end; if IsWalkSpeedEnabled then ToggleWalkSpeed(false) end; if IsNoclipEnabled then ToggleNoclip(false) end; if IsGodModeEnabled then ToggleGodMode(false) end; if IsKillAuraEnabled then ToggleKillAura(false) end; if IsAimbotEnabled then ToggleAimbot(false) end; if IsInfinityJumpEnabled then IsInfinityJumpEnabled = false; if infinityJumpConnection then infinityJumpConnection:Disconnect(); infinityJumpConnection = nil end end; if antifling_enabled then ToggleAntiFling(false) end; if IsAntiLagEnabled then ToggleAntiLag(false) end
         if IsBoostFPSEnabled then ToggleBoostFPS(false) end
+        if IsInvisibleGhostEnabled then ToggleInvisibleGhost(false) end
         if isEmoteEnabled then destroyEmoteGUI(); EmoteToggleButton.Visible = false end
         if isAnimationEnabled then destroyAnimationGUI(); AnimationShowButton.Visible = false end 
         if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then LocalPlayer.Character.Humanoid.WalkSpeed = OriginalWalkSpeed end
@@ -2953,6 +3024,7 @@ task.spawn(function()
     createToggle(GeneralTabContent, "Noclip", IsNoclipEnabled, function(v) ToggleNoclip(v) end)
     createToggle(GeneralTabContent, "Infinity Jump", IsInfinityJumpEnabled, function(v) IsInfinityJumpEnabled = v; saveFeatureStates(); if v then if LocalPlayer.Character and LocalPlayer.Character.Humanoid then infinityJumpConnection = ConnectEvent(UserInputService.JumpRequest, function() LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end) end elseif infinityJumpConnection then infinityJumpConnection:Disconnect(); infinityJumpConnection = nil end end)
     createToggle(GeneralTabContent, "Mode Kebal", IsGodModeEnabled, ToggleGodMode) 
+    createToggle(GeneralTabContent, "Invisible Ghost", IsInvisibleGhostEnabled, ToggleInvisibleGhost)
     createButton(GeneralTabContent, "Buka Touch Fling", CreateTouchFlingGUI)
     createToggle(GeneralTabContent, "Anti-Fling", antifling_enabled, ToggleAntiFling)
     
@@ -3146,6 +3218,7 @@ task.spawn(function()
         if IsKillAuraEnabled then ToggleKillAura(true) end
         if IsAimbotEnabled then ToggleAimbot(true) end
         if IsBoostFPSEnabled then ToggleBoostFPS(true) end
+        if IsInvisibleGhostEnabled then ToggleInvisibleGhost(true) end
         -- [[ PERUBAHAN DIMULAI: Terapkan status ESP terpisah saat dimuat ]]
         if IsEspNameEnabled then ToggleESPName(true) end
         if IsEspBodyEnabled then ToggleESPBody(true) end
@@ -3154,6 +3227,11 @@ task.spawn(function()
     
     local function reapplyFeaturesOnRespawn(character)
         if not character then return end
+
+        if IsInvisibleGhostEnabled then
+            IsInvisibleGhostEnabled = false
+            saveFeatureStates()
+        end
     
         task.wait(0.2) 
     
