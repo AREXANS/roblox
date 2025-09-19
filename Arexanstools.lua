@@ -3183,10 +3183,11 @@ task.spawn(function()
     end
 
     local function setupRekamanTab()
-        RekamanListLayout.Padding = UDim.new(0, 5) -- Kurangi padding utama
+        RekamanListLayout.Padding = UDim.new(0, 5)
     
-        local recStatusLabel, recordingsListFrame
+        local recStatusLabel, recordingsListFrame, recordButton, playButton
         local updateRecordingsList, startRecording, stopActions, playRecording
+        local animationCache = {}
     
         updateRecordingsList = function()
             if not recordingsListFrame then return end
@@ -3200,14 +3201,14 @@ task.spawn(function()
         
             for _, recName in ipairs(sortedNames) do
                 local itemFrame = Instance.new("Frame")
-                itemFrame.Name = recName; itemFrame.Size = UDim2.new(1, 0, 0, 28); itemFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35); itemFrame.BackgroundTransparency = (loadedRecordingName == recName) and 0 or 0.3; itemFrame.BorderSizePixel = 0; itemFrame.Parent = recordingsListFrame
+                itemFrame.Name = recName; itemFrame.Size = UDim2.new(1, 0, 0, 22); itemFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35); itemFrame.BackgroundTransparency = (loadedRecordingName == recName) and 0 or 0.3; itemFrame.BorderSizePixel = 0; itemFrame.Parent = recordingsListFrame
                 local itemCorner = Instance.new("UICorner", itemFrame); itemCorner.CornerRadius = UDim.new(0, 4)
-                local itemLayout = Instance.new("UIListLayout", itemFrame); itemLayout.FillDirection = Enum.FillDirection.Horizontal; itemLayout.VerticalAlignment = Enum.VerticalAlignment.Center; itemLayout.Padding = UDim.new(0, 5)
-                local nameButton = Instance.new("TextButton"); nameButton.Size = UDim2.new(1, -65, 1, 0); nameButton.BackgroundTransparency = 1; nameButton.Font = (loadedRecordingName == recName) and Enum.Font.SourceSansBold or Enum.Font.SourceSans; nameButton.Text = recName; nameButton.TextColor3 = (loadedRecordingName == recName) and Color3.fromRGB(0, 200, 255) or Color3.fromRGB(220, 220, 220); nameButton.TextSize = 13; nameButton.TextXAlignment = Enum.TextXAlignment.Left; nameButton.Parent = itemFrame
+                local itemLayout = Instance.new("UIListLayout", itemFrame); itemLayout.FillDirection = Enum.FillDirection.Horizontal; itemLayout.VerticalAlignment = Enum.VerticalAlignment.Center; itemLayout.Padding = UDim.new(0, 3)
+                local nameButton = Instance.new("TextButton"); nameButton.Size = UDim2.new(1, -45, 1, 0); nameButton.BackgroundTransparency = 1; nameButton.Font = (loadedRecordingName == recName) and Enum.Font.SourceSansBold or Enum.Font.SourceSans; nameButton.Text = recName; nameButton.TextColor3 = (loadedRecordingName == recName) and Color3.fromRGB(0, 200, 255) or Color3.fromRGB(220, 220, 220); nameButton.TextSize = 12; nameButton.TextXAlignment = Enum.TextXAlignment.Left; nameButton.Parent = itemFrame
                 local namePadding = Instance.new("UIPadding", nameButton); namePadding.PaddingLeft = UDim.new(0, 8)
-                local renameButton = Instance.new("TextButton"); renameButton.Size = UDim2.new(0, 25, 0, 22); renameButton.BackgroundColor3 = Color3.fromRGB(50, 150, 200); renameButton.Font = Enum.Font.SourceSansBold; renameButton.Text = "✏️"; renameButton.TextColor3 = Color3.fromRGB(255, 255, 255); renameButton.TextSize = 14; renameButton.Parent = itemFrame
+                local renameButton = Instance.new("TextButton"); renameButton.Size = UDim2.new(0, 20, 0, 18); renameButton.BackgroundColor3 = Color3.fromRGB(50, 150, 200); renameButton.Font = Enum.Font.SourceSansBold; renameButton.Text = "✏️"; renameButton.TextColor3 = Color3.fromRGB(255, 255, 255); renameButton.TextSize = 12; renameButton.Parent = itemFrame
                 local renameCorner = Instance.new("UICorner", renameButton); renameCorner.CornerRadius = UDim.new(0, 4)
-                local deleteButton = Instance.new("TextButton"); deleteButton.Size = UDim2.new(0, 25, 0, 22); deleteButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50); deleteButton.Font = Enum.Font.SourceSansBold; deleteButton.Text = "🗑️"; deleteButton.TextColor3 = Color3.fromRGB(255, 255, 255); deleteButton.TextSize = 14; deleteButton.Parent = itemFrame
+                local deleteButton = Instance.new("TextButton"); deleteButton.Size = UDim2.new(0, 20, 0, 18); deleteButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50); deleteButton.Font = Enum.Font.SourceSansBold; deleteButton.Text = "🗑️"; deleteButton.TextColor3 = Color3.fromRGB(255, 255, 255); deleteButton.TextSize = 12; deleteButton.Parent = itemFrame
                 local deleteCorner = Instance.new("UICorner", deleteButton); deleteCorner.CornerRadius = UDim.new(0, 4)
                 nameButton.MouseButton1Click:Connect(function() loadedRecordingName = recName; recStatusLabel.Text = "Memuat: " .. recName; updateRecordingsList() end)
                 renameButton.MouseButton1Click:Connect(function()
@@ -3229,111 +3230,205 @@ task.spawn(function()
             if isRecording then return end; if isPlaying then recStatusLabel.Text = "Tidak bisa merekam saat memutar ulang."; return end
             local char = LocalPlayer.Character; local hrp = char and char:FindFirstChild("HumanoidRootPart"); local humanoid = char and char:FindFirstChildOfClass("Humanoid")
             if not (hrp and humanoid) then recStatusLabel.Text = "Karakter/Humanoid tidak ditemukan."; return end
-            isRecording = true; currentRecordingData = {}; local startTime = tick(); recStatusLabel.Text = "Merekam... 🔴"
+            
+            isRecording = true
+            currentRecordingData = {}
+            local startTime = tick()
+            recStatusLabel.Text = "Merekam... 🔴"
+            
+            recordButton.Text = "⏹️"
+            recordButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+            playButton.Visible = false
+
+            local lastPosition = hrp.Position
+            local TELEPORT_THRESHOLD = 50 -- Jarak dalam stud untuk dianggap teleport
+
             recordingConnection = RunService.Heartbeat:Connect(function()
-                if not isRecording then return end; local playingAnims = {}; for _, track in ipairs(humanoid:GetPlayingAnimationTracks()) do table.insert(playingAnims, {id = track.Animation.AnimationId, time = track.TimePosition}) end
-                table.insert(currentRecordingData, {time = tick() - startTime, cframe = hrp.CFrame, anims = playingAnims})
+                if not isRecording then return end
+                
+                local currentCFrame = hrp.CFrame
+                local currentPosition = currentCFrame.Position
+                local distance = (currentPosition - lastPosition).Magnitude
+                
+                local frameData = {
+                    time = tick() - startTime,
+                    cframe = currentCFrame,
+                    anims = {}
+                }
+
+                if distance > TELEPORT_THRESHOLD then
+                    frameData.isTeleport = true
+                end
+
+                for _, track in ipairs(humanoid:GetPlayingAnimationTracks()) do
+                    table.insert(frameData.anims, {id = track.Animation.AnimationId, time = track.TimePosition})
+                end
+                
+                table.insert(currentRecordingData, frameData)
+                lastPosition = currentPosition
             end)
         end
     
-        local playbackMovers = {} -- Tabel untuk menyimpan mover fisika
-
+        local playbackMovers = {}
+    
         stopActions = function()
             if isRecording then
-                isRecording = false; if recordingConnection then recordingConnection:Disconnect(); recordingConnection = nil end
+                isRecording = false
+                if recordingConnection then recordingConnection:Disconnect(); recordingConnection = nil end
+                
                 if #currentRecordingData > 1 then
-                    local newName, i = "Rekaman 1", 1; while savedRecordings[newName] do i += 1; newName = "Rekaman " .. i end
-                    savedRecordings[newName] = currentRecordingData; recStatusLabel.Text = "Rekaman disimpan sebagai: " .. newName; updateRecordingsList()
+                    local newName, i = "Rekaman 1", 1
+                    while savedRecordings[newName] do i += 1; newName = "Rekaman " .. i end
+                    savedRecordings[newName] = currentRecordingData
+                    recStatusLabel.Text = "Rekaman disimpan sebagai: " .. newName
+                    updateRecordingsList()
                 else
                     recStatusLabel.Text = "Perekaman dibatalkan (terlalu singkat)."
-                end; currentRecordingData = {}
-            end
-            if isPlaying then
-                isPlaying = false; if playbackConnection then playbackConnection:Disconnect(); playbackConnection = nil end
+                end
+                currentRecordingData = {}
                 
-                -- Hancurkan mover fisika jika ada
+                recordButton.Text = "🔴"
+                recordButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+                playButton.Visible = true
+                
+                local char = LocalPlayer.Character
+                local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+                if humanoid then
+                    humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+                end
+            end
+    
+            if isPlaying then
+                isPlaying = false
+                if playbackConnection then playbackConnection:Disconnect(); playbackConnection = nil end
+                
+                for id, track in pairs(animationCache) do
+                    if track and pcall(function() return track.IsPlaying end) then
+                        track:Stop(0.1)
+                    end
+                end
+                animationCache = {}
+    
                 if playbackMovers.attachment then pcall(function() playbackMovers.attachment:Destroy() end) end
                 if playbackMovers.alignPos then pcall(function() playbackMovers.alignPos:Destroy() end) end
                 if playbackMovers.alignOrient then pcall(function() playbackMovers.alignOrient:Destroy() end) end
                 playbackMovers = {}
-
+    
                 local char = LocalPlayer.Character
                 local humanoid = char and char:FindFirstChildOfClass("Humanoid")
                 if humanoid then
                     humanoid.PlatformStand = false
                     humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
                 end
-
+    
+                playButton.Text = "▶️"
+                playButton.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+                recordButton.Visible = true
+    
                 recStatusLabel.Text = "Pemutaran ulang dihentikan."
             end
         end
         
         playRecording = function(replayCountBox)
-            if isPlaying then return end; if isRecording then recStatusLabel.Text = "Hentikan perekaman terlebih dahulu."; return end
+            if isPlaying then return end
+            if isRecording then recStatusLabel.Text = "Hentikan perekaman terlebih dahulu."; return end
             if not loadedRecordingName or not savedRecordings[loadedRecordingName] then recStatusLabel.Text = "Pilih rekaman untuk diputar."; return end
             
-            local char = LocalPlayer.Character; local hrp = char and char:FindFirstChild("HumanoidRootPart"); local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+            local char = LocalPlayer.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            local humanoid = char and char:FindFirstChildOfClass("Humanoid")
             if not (hrp and humanoid) then recStatusLabel.Text = "Karakter/Humanoid tidak ditemukan."; return end
             
-            local recording = savedRecordings[loadedRecordingName]; if #recording < 2 then recStatusLabel.Text = "Rekaman tidak valid."; return end
+            local recording = savedRecordings[loadedRecordingName]
+            if #recording < 2 then recStatusLabel.Text = "Rekaman tidak valid."; return end
             
-            local countText = replayCountBox.Text; local replayCount = tonumber(countText); if countText == "" or countText == "0" then replayCount = math.huge elseif not replayCount or replayCount < 1 then replayCount = 1 end
+            local countText = replayCountBox.Text
+            local replayCount = tonumber(countText)
+            if countText == "" or countText == "0" then replayCount = math.huge elseif not replayCount or replayCount < 1 then replayCount = 1 end
             
-            isPlaying = true;
-            local originalPlatformStand = humanoid.PlatformStand;
+            isPlaying = true
             humanoid.PlatformStand = true
-
-            -- Buat mover fisika untuk gerakan halus
-            local attachment = Instance.new("Attachment", hrp); attachment.Name = "ReplayAttachment"
-            local alignPos = Instance.new("AlignPosition", hrp); alignPos.Attachment0 = attachment; alignPos.Mode = Enum.PositionAlignmentMode.OneAttachment; alignPos.Responsiveness = 200; alignPos.MaxForce = 100000
-            local alignOrient = Instance.new("AlignOrientation", hrp); alignOrient.Attachment0 = attachment; alignOrient.Mode = Enum.OrientationAlignmentMode.OneAttachment; alignOrient.Responsiveness = 200; alignOrient.MaxTorque = 100000
+    
+            playButton.Text = "⏸️"
+            playButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+            recordButton.Visible = false
+    
+            local attachment = Instance.new("Attachment", hrp)
+            attachment.Name = "ReplayAttachment"
+            local alignPos = Instance.new("AlignPosition", hrp)
+            alignPos.Attachment0 = attachment
+            alignPos.Mode = Enum.PositionAlignmentMode.OneAttachment
+            alignPos.Responsiveness = 200
+            alignPos.MaxForce = 100000
+            local alignOrient = Instance.new("AlignOrientation", hrp)
+            alignOrient.Attachment0 = attachment
+            alignOrient.Mode = Enum.OrientationAlignmentMode.OneAttachment
+            alignOrient.Responsiveness = 200
+            alignOrient.MaxTorque = 100000
             playbackMovers = {attachment = attachment, alignPos = alignPos, alignOrient = alignOrient}
-
-            local animationCache = {}; local currentLoop = 1; local loopStartTime = tick(); local recordingDuration = recording[#recording].time; local lastFrameIndex = 1
+    
+            animationCache = {}
+            local currentLoop = 1
+            local loopStartTime = tick()
+            local recordingDuration = recording[#recording].time
+            local lastFrameIndex = 1
             
+            recStatusLabel.Text = string.format("Memutar: %s (1/%s)", loadedRecordingName, tostring(replayCount) == "inf" and "∞" or tostring(replayCount))
+    
             playbackConnection = RunService.Heartbeat:Connect(function()
                 if not isPlaying then
                     if playbackConnection then playbackConnection:Disconnect(); playbackConnection = nil end
                     return 
                 end
-
+    
                 local elapsedTime = tick() - loopStartTime
                 if elapsedTime > recordingDuration then
                     currentLoop = currentLoop + 1
                     if currentLoop > replayCount then
-                        stopActions() -- Panggil stopActions untuk pembersihan lengkap
+                        stopActions()
                         recStatusLabel.Text = "Pemutaran selesai."
                         return
                     end
-                    loopStartTime = tick(); elapsedTime = 0; lastFrameIndex = 1;
-                    recStatusLabel.Text = string.format("Memutar: %s (%d/%s)", loadedRecordingName, currentLoop, tostring(replayCount) == "inf" and "∞" or replayCount)
+                    loopStartTime = tick()
+                    elapsedTime = 0
+                    lastFrameIndex = 1
+                    recStatusLabel.Text = string.format("Memutar: %s (%d/%s)", loadedRecordingName, currentLoop, tostring(replayCount) == "inf" and "∞" or tostring(replayCount))
                 end
-
-                local currentFrame, nextFrame;
+    
+                local frameToPlay
                 for i = lastFrameIndex, #recording do
                     if recording[i].time >= elapsedTime then
-                        nextFrame = recording[i]
-                        currentFrame = recording[i-1] or recording[1]
+                        frameToPlay = recording[i]
                         lastFrameIndex = i
                         break
                     end
                 end
                 
-                if not nextFrame then return end
-                
-                local alpha = math.clamp((elapsedTime - currentFrame.time) / (nextFrame.time - currentFrame.time), 0, 1)
-                local interpolatedCFrame = currentFrame.cframe:Lerp(nextFrame.cframe, alpha)
-                
-                -- Perbarui target mover, bukan CFrame langsung
-                alignPos.Position = interpolatedCFrame.Position
-                alignOrient.CFrame = interpolatedCFrame
+                if not frameToPlay then return end
 
-                -- Logika animasi tetap sama
-                local requiredAnims = {};
-                for _, animData in ipairs(currentFrame.anims) do
+                local currentFrame = recording[lastFrameIndex - 1] or recording[1]
+
+                if frameToPlay.isTeleport then
+                    hrp.CFrame = frameToPlay.cframe
+                    playbackMovers.alignPos.Position = frameToPlay.cframe.Position
+                    playbackMovers.alignOrient.CFrame = frameToPlay.cframe
+                    loopStartTime = tick() - frameToPlay.time
+                else
+                    local alpha = (elapsedTime - currentFrame.time) / (frameToPlay.time - currentFrame.time)
+                    alpha = math.clamp(alpha, 0, 1)
+                    local interpolatedCFrame = currentFrame.cframe:Lerp(frameToPlay.cframe, alpha)
+                    
+                    playbackMovers.alignPos.Position = interpolatedCFrame.Position
+                    playbackMovers.alignOrient.CFrame = interpolatedCFrame
+                end
+    
+                local animFrame = currentFrame
+                local requiredAnims = {}
+                for _, animData in ipairs(animFrame.anims) do
                     requiredAnims[animData.id] = animData.time
                     if not animationCache[animData.id] then
-                        local anim = Instance.new("Animation"); anim.AnimationId = animData.id
+                        local anim = Instance.new("Animation")
+                        anim.AnimationId = animData.id
                         animationCache[animData.id] = humanoid:LoadAnimation(anim)
                     end
                     local track = animationCache[animData.id]
@@ -3349,48 +3444,160 @@ task.spawn(function()
             end)
         end
         
-        -- Frame Kontrol Utama (Tombol Ikon)
-        local controlButtonsFrame = Instance.new("Frame", RekamanTabContent); controlButtonsFrame.Name = "ControlButtonsFrame"; controlButtonsFrame.Size = UDim2.new(1, 0, 0, 35); controlButtonsFrame.BackgroundTransparency = 1; controlButtonsFrame.LayoutOrder = 1
-        local controlLayout = Instance.new("UIListLayout", controlButtonsFrame); controlLayout.FillDirection = Enum.FillDirection.Horizontal; controlLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center; controlLayout.VerticalAlignment = Enum.VerticalAlignment.Center; controlLayout.Padding = UDim.new(0, 10)
+        local controlButtonsFrame = Instance.new("Frame", RekamanTabContent)
+        controlButtonsFrame.Name = "ControlButtonsFrame"
+        controlButtonsFrame.Size = UDim2.new(1, 0, 0, 35)
+        controlButtonsFrame.BackgroundTransparency = 1
+        controlButtonsFrame.LayoutOrder = 1
+        local controlLayout = Instance.new("UIListLayout", controlButtonsFrame)
+        controlLayout.FillDirection = Enum.FillDirection.Horizontal
+        controlLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        controlLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+        controlLayout.Padding = UDim.new(0, 5)
         
         local function createIconButton(parent, iconText, color, size)
             local btn = Instance.new("TextButton", parent)
-            btn.Size = UDim2.new(0, size, 0, size);
-            btn.BackgroundColor3 = color;
-            btn.Font = Enum.Font.SourceSansBold;
-            btn.Text = iconText;
-            btn.TextColor3 = Color3.fromRGB(255, 255, 255);
-            btn.TextSize = 18;
-            local corner = Instance.new("UICorner", btn); corner.CornerRadius = UDim.new(0, 8)
-            local stroke = Instance.new("UIStroke", btn); stroke.Color = Color3.fromRGB(255,255,255); stroke.Transparency = 0.8; stroke.Thickness = 1
+            btn.Size = UDim2.new(0, size, 0, size)
+            btn.BackgroundColor3 = color
+            btn.Font = Enum.Font.SourceSansBold
+            btn.Text = iconText
+            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            btn.TextSize = 15
+            local corner = Instance.new("UICorner", btn)
+            corner.CornerRadius = UDim.new(0, 6)
+            local stroke = Instance.new("UIStroke", btn)
+            stroke.Color = Color3.fromRGB(255,255,255)
+            stroke.Transparency = 0.8
+            stroke.Thickness = 1
             return btn
         end
+    
+        local importButton = createIconButton(controlButtonsFrame, "📥", Color3.fromRGB(50, 150, 200), 24)
+        recordButton = createIconButton(controlButtonsFrame, "🔴", Color3.fromRGB(200, 50, 50), 24)
+        playButton = createIconButton(controlButtonsFrame, "▶️", Color3.fromRGB(0, 150, 255), 24)
+        local exportButton = createIconButton(controlButtonsFrame, "📤", Color3.fromRGB(50, 150, 200), 24)
 
-        local recordButton = createIconButton(controlButtonsFrame, "🔴", Color3.fromRGB(200, 50, 50), 30)
-        local stopButton = createIconButton(controlButtonsFrame, "⏹️", Color3.fromRGB(80, 80, 80), 30)
-        local playButton = createIconButton(controlButtonsFrame, "▶️", Color3.fromRGB(0, 150, 255), 30)
+        importButton.MouseButton1Click:Connect(function()
+            showImportPrompt(function(text)
+                if not text or text == "" then return end
+                local success, decodedData = pcall(HttpService.JSONDecode, HttpService, text)
+                if not success or type(decodedData) ~= "table" then
+                    showNotification("Data impor rekaman tidak valid!", Color3.fromRGB(200, 50, 50))
+                    return
+                end
+                local importedCount = 0
+                for recName, recData in pairs(decodedData) do
+                    if not savedRecordings[recName] and type(recData) == "table" then
+                        savedRecordings[recName] = recData
+                        importedCount = importedCount + 1
+                    end
+                end
+                if importedCount > 0 then
+                    updateRecordingsList()
+                    showNotification(importedCount .. " rekaman berhasil diimpor!", Color3.fromRGB(50, 200, 50))
+                else
+                    showNotification("Tidak ada rekaman baru untuk diimpor.", Color3.fromRGB(200, 150, 50))
+                end
+            end)
+        end)
+
+        exportButton.MouseButton1Click:Connect(function()
+            if not setclipboard then
+                showNotification("Executor tidak mendukung clipboard!", Color3.fromRGB(200, 50, 50))
+                return
+            end
+            if not next(savedRecordings) then
+                showNotification("Tidak ada rekaman untuk diekspor.", Color3.fromRGB(200, 150, 50))
+                return
+            end
+            local success, result = pcall(function()
+                local jsonData = HttpService:JSONEncode(savedRecordings)
+                setclipboard(jsonData)
+                showNotification("Data rekaman disalin ke clipboard!", Color3.fromRGB(50, 200, 50))
+            end)
+            if not success then
+                showNotification("Gagal mengekspor data rekaman!", Color3.fromRGB(200, 50, 50))
+            end
+        end)
         
-        -- Frame Opsi Pemutaran
-        local replayOptionsFrame = Instance.new("Frame", RekamanTabContent); replayOptionsFrame.Name = "ReplayOptionsFrame"; replayOptionsFrame.Size = UDim2.new(1, 0, 0, 25); replayOptionsFrame.BackgroundTransparency = 1; replayOptionsFrame.LayoutOrder = 2
-        local replayOptionsLayout = Instance.new("UIListLayout", replayOptionsFrame); replayOptionsLayout.FillDirection = Enum.FillDirection.Horizontal; replayOptionsLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-        local replayLabel = Instance.new("TextLabel", replayOptionsFrame); replayLabel.Name = "ReplayLabel"; replayLabel.Size = UDim2.new(0.7, -5, 1, 0); replayLabel.BackgroundTransparency = 1; replayLabel.Font = Enum.Font.SourceSans; replayLabel.Text = "Jumlah Ulang (0 = ∞):"; replayLabel.TextColor3 = Color3.fromRGB(200, 200, 200); replayLabel.TextSize = 12; replayLabel.TextXAlignment = Enum.TextXAlignment.Left
-        local replayCountBox = Instance.new("TextBox", replayOptionsFrame); replayCountBox.Name = "ReplayCountBox"; replayCountBox.Size = UDim2.new(0.3, 0, 1, 0); replayCountBox.BackgroundColor3 = Color3.fromRGB(35, 35, 35); replayCountBox.Font = Enum.Font.SourceSans; replayCountBox.Text = "1"; replayCountBox.PlaceholderText = "1"; replayCountBox.TextColor3 = Color3.fromRGB(220, 220, 220); replayCountBox.TextSize = 12; replayCountBox.ClearTextOnFocus = false
-        local boxCorner = Instance.new("UICorner", replayCountBox); boxCorner.CornerRadius = UDim.new(0, 4)
+        local replayOptionsFrame = Instance.new("Frame", RekamanTabContent)
+        replayOptionsFrame.Name = "ReplayOptionsFrame"
+        replayOptionsFrame.Size = UDim2.new(1, 0, 0, 25)
+        replayOptionsFrame.BackgroundTransparency = 1
+        replayOptionsFrame.LayoutOrder = 2
+        local replayOptionsLayout = Instance.new("UIListLayout", replayOptionsFrame)
+        replayOptionsLayout.FillDirection = Enum.FillDirection.Horizontal
+        replayOptionsLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+        local replayLabel = Instance.new("TextLabel", replayOptionsFrame)
+        replayLabel.Name = "ReplayLabel"
+        replayLabel.Size = UDim2.new(0.7, -5, 1, 0)
+        replayLabel.BackgroundTransparency = 1
+        replayLabel.Font = Enum.Font.SourceSans
+        replayLabel.Text = "Jumlah Ulang (0 = ∞):"
+        replayLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+        replayLabel.TextSize = 12
+        replayLabel.TextXAlignment = Enum.TextXAlignment.Left
+        local replayCountBox = Instance.new("TextBox", replayOptionsFrame)
+        replayCountBox.Name = "ReplayCountBox"
+        replayCountBox.Size = UDim2.new(0.3, 0, 1, 0)
+        replayCountBox.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        replayCountBox.Font = Enum.Font.SourceSans
+        replayCountBox.Text = "1"
+        replayCountBox.PlaceholderText = "1"
+        replayCountBox.TextColor3 = Color3.fromRGB(220, 220, 220)
+        replayCountBox.TextSize = 12
+        replayCountBox.ClearTextOnFocus = false
+        local boxCorner = Instance.new("UICorner", replayCountBox)
+        boxCorner.CornerRadius = UDim.new(0, 4)
         replayCountBox:GetPropertyChangedSignal("Text"):Connect(function() replayCountBox.Text = replayCountBox.Text:gsub("%D", "") end)
         
-        -- Label Status
-        recStatusLabel = Instance.new("TextLabel", RekamanTabContent); recStatusLabel.Name = "StatusLabel"; recStatusLabel.Size = UDim2.new(1, 0, 0, 20); recStatusLabel.BackgroundTransparency = 1; recStatusLabel.Font = Enum.Font.SourceSansItalic; recStatusLabel.Text = "Siap."; recStatusLabel.TextColor3 = Color3.fromRGB(180, 180, 180); recStatusLabel.TextSize = 12; recStatusLabel.LayoutOrder = 3
+        recStatusLabel = Instance.new("TextLabel", RekamanTabContent)
+        recStatusLabel.Name = "StatusLabel"
+        recStatusLabel.Size = UDim2.new(1, 0, 0, 20)
+        recStatusLabel.BackgroundTransparency = 1
+        recStatusLabel.Font = Enum.Font.SourceSansItalic
+        recStatusLabel.Text = "Siap."
+        recStatusLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+        recStatusLabel.TextSize = 12
+        recStatusLabel.LayoutOrder = 3
         
-        -- Daftar Rekaman (ScrollingFrame)
-        recordingsListFrame = Instance.new("ScrollingFrame", RekamanTabContent); recordingsListFrame.Name = "RecordingsListFrame"; recordingsListFrame.Size = UDim2.new(1, 0, 1, -95); recordingsListFrame.Position = UDim2.new(0,0,0,95); recordingsListFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25); recordingsListFrame.BackgroundTransparency = 0.5; recordingsListFrame.BorderSizePixel = 0; recordingsListFrame.CanvasSize = UDim2.new(0, 0, 0, 0); recordingsListFrame.ScrollBarThickness = 6; recordingsListFrame.ScrollBarImageColor3 = Color3.fromRGB(0, 150, 255); recordingsListFrame.LayoutOrder = 4
-        local recListLayout = Instance.new("UIListLayout", recordingsListFrame); recListLayout.Padding = UDim.new(0, 5); recListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center; recListLayout.SortOrder = Enum.SortOrder.Name
-        local recListPadding = Instance.new("UIPadding", recordingsListFrame); recListPadding.PaddingTop = UDim.new(0, 5); recListPadding.PaddingBottom = UDim.new(0, 5); recListPadding.PaddingLeft = UDim.new(0,5); recListPadding.PaddingRight = UDim.new(0,5)
+        recordingsListFrame = Instance.new("ScrollingFrame", RekamanTabContent)
+        recordingsListFrame.Name = "RecordingsListFrame"
+        recordingsListFrame.Size = UDim2.new(1, 0, 1, -95)
+        recordingsListFrame.Position = UDim2.new(0,0,0,95)
+        recordingsListFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        recordingsListFrame.BackgroundTransparency = 0.5
+        recordingsListFrame.BorderSizePixel = 0
+        recordingsListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+        recordingsListFrame.ScrollBarThickness = 6
+        recordingsListFrame.ScrollBarImageColor3 = Color3.fromRGB(0, 150, 255)
+        recordingsListFrame.LayoutOrder = 4
+        local recListLayout = Instance.new("UIListLayout", recordingsListFrame)
+        recListLayout.Padding = UDim.new(0, 5)
+        recListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        recListLayout.SortOrder = Enum.SortOrder.Name
+        local recListPadding = Instance.new("UIPadding", recordingsListFrame)
+        recListPadding.PaddingTop = UDim.new(0, 5)
+        recListPadding.PaddingBottom = UDim.new(0, 5)
+        recListPadding.PaddingLeft = UDim.new(0,5)
+        recListPadding.PaddingRight = UDim.new(0,5)
         recListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() recordingsListFrame.CanvasSize = UDim2.new(0, 0, 0, recListLayout.AbsoluteContentSize.Y + 10) end)
         
-        -- Koneksi Tombol
-        recordButton.MouseButton1Click:Connect(startRecording)
-        stopButton.MouseButton1Click:Connect(stopActions)
-        playButton.MouseButton1Click:Connect(function() playRecording(replayCountBox) end)
+        recordButton.MouseButton1Click:Connect(function()
+            if isRecording then
+                stopActions()
+            else
+                startRecording()
+            end
+        end)
+        
+        playButton.MouseButton1Click:Connect(function()
+            if isPlaying then
+                stopActions()
+            else
+                playRecording(replayCountBox)
+            end
+        end)
     end
 
     setupPlayerTab()
