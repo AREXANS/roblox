@@ -102,6 +102,7 @@ task.spawn(function()
     local GUI_POSITIONS_SAVE_FILE = SAVE_FOLDER .. "/ArexansTools_GuiPositions_" .. tostring(game.PlaceId) .. ".json"
     local FEATURE_STATES_SAVE_FILE = SAVE_FOLDER .. "/ArexansTools_FeatureStates_" .. tostring(game.PlaceId) .. ".json"
     local ANIMATION_SAVE_FILE = SAVE_FOLDER .. "/ArexansTools_Animations.json"
+    local RECORDING_SAVE_FILE = SAVE_FOLDER .. "/ArexansTools_Recordings.json" -- [[ PERUBAHAN BARU ]]
     local SESSION_SAVE_FILE = SAVE_FOLDER .. "/ArexansTools_Session.json"
 
     -- [[ PERUBAHAN BARU: Fungsi untuk mengelola sesi login dipindahkan ke lingkup luar ]]
@@ -608,7 +609,7 @@ task.spawn(function()
         local partsA = split(a.Name or ""); local partsB = split(b.Name or ""); for i = 1, math.min(#partsA, #partsB) do local partA = partsA[i]; local partB = partsB[i]; if type(partA) ~= type(partB) then return type(partA) == "number" end; if partA < partB then return true elseif partA > partB then return false end end; return #partsA < #partsB
     end
     
-    local updateTeleportList 
+    local updateTeleportList, updateRecordingsList
     local updatePlayerList
     
     local function showNotification(message, color)
@@ -708,6 +709,32 @@ task.spawn(function()
             if success and type(data) == "table" then
                 lastAnimations = data
             end
+        end
+    end
+
+    -- [[ PERUBAHAN BARU: Fungsi simpan dan muat untuk rekaman ]]
+    local function saveRecordingsData()
+        if not writefile then return end
+        pcall(function()
+            local jsonData = HttpService:JSONEncode(savedRecordings)
+            writefile(RECORDING_SAVE_FILE, jsonData)
+        end)
+    end
+
+    local function loadRecordingsData()
+        if not readfile or not isfile or not isfile(RECORDING_SAVE_FILE) then return end
+        local success, result = pcall(function()
+            local fileContent = readfile(RECORDING_SAVE_FILE)
+            local decodedData = HttpService:JSONDecode(fileContent)
+            if type(decodedData) == "table" then
+                savedRecordings = decodedData
+            end
+            if updateRecordingsList then
+                updateRecordingsList()
+            end
+        end)
+        if not success then
+            warn("Gagal memuat data rekaman:", result)
         end
     end
 
@@ -963,9 +990,9 @@ task.spawn(function()
     local GeneralTabButton = createTabButton("Umum", TabsFrame)
     local CombatTabButton = createTabButton("Tempur", TabsFrame)
     local TeleportTabButton = createTabButton("Teleport", TabsFrame)
+    local RekamanTabButton = createTabButton("Rekaman", TabsFrame)
     local VipTabButton = createTabButton("VIP", TabsFrame)
     local SettingsTabButton = createTabButton("Pengaturan", TabsFrame)
-    local RekamanTabButton = createTabButton("Rekaman", TabsFrame)
     
     local function CreateFOVCircle()
         if FOVPart then FOVPart:Destroy() end
@@ -3184,13 +3211,16 @@ task.spawn(function()
 
     local function setupRekamanTab()
         RekamanListLayout.Padding = UDim.new(0, 5)
-    
+
+        -- [[ PERUBAHAN BESAR: Variabel untuk multi-pilih dan sekuensial ]]
         local recStatusLabel, recordingsListFrame, recordButton, playButton
-        local updateRecordingsList, startRecording, stopActions, playRecording
-        local animationCache = {}
+        local updateRecordingsList, startRecording, stopActions, playSequence, playSingleRecording
+        local selectedRecordings = {}
+        local playbackConnection = nil
     
         updateRecordingsList = function()
             if not recordingsListFrame then return end
+            local scrollPos = recordingsListFrame.CanvasPosition
             for _, child in ipairs(recordingsListFrame:GetChildren()) do
                 if child:IsA("Frame") then child:Destroy() end
             end
@@ -3200,30 +3230,53 @@ task.spawn(function()
             table.sort(sortedNames)
         
             for _, recName in ipairs(sortedNames) do
+                local isSelected = selectedRecordings[recName] or false
+
                 local itemFrame = Instance.new("Frame")
-                itemFrame.Name = recName; itemFrame.Size = UDim2.new(1, 0, 0, 22); itemFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35); itemFrame.BackgroundTransparency = (loadedRecordingName == recName) and 0 or 0.3; itemFrame.BorderSizePixel = 0; itemFrame.Parent = recordingsListFrame
+                itemFrame.Name = recName; itemFrame.Size = UDim2.new(1, 0, 0, 22); itemFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35); itemFrame.BackgroundTransparency = isSelected and 0 or 0.3; itemFrame.BorderSizePixel = 0; itemFrame.Parent = recordingsListFrame
                 local itemCorner = Instance.new("UICorner", itemFrame); itemCorner.CornerRadius = UDim.new(0, 4)
-                local itemLayout = Instance.new("UIListLayout", itemFrame); itemLayout.FillDirection = Enum.FillDirection.Horizontal; itemLayout.VerticalAlignment = Enum.VerticalAlignment.Center; itemLayout.Padding = UDim.new(0, 3)
-                local nameButton = Instance.new("TextButton"); nameButton.Size = UDim2.new(1, -45, 1, 0); nameButton.BackgroundTransparency = 1; nameButton.Font = (loadedRecordingName == recName) and Enum.Font.SourceSansBold or Enum.Font.SourceSans; nameButton.Text = recName; nameButton.TextColor3 = (loadedRecordingName == recName) and Color3.fromRGB(0, 200, 255) or Color3.fromRGB(220, 220, 220); nameButton.TextSize = 12; nameButton.TextXAlignment = Enum.TextXAlignment.Left; nameButton.Parent = itemFrame
-                local namePadding = Instance.new("UIPadding", nameButton); namePadding.PaddingLeft = UDim.new(0, 8)
+                local itemLayout = Instance.new("UIListLayout", itemFrame); itemLayout.FillDirection = Enum.FillDirection.Horizontal; itemLayout.VerticalAlignment = Enum.VerticalAlignment.Center; itemLayout.Padding = UDim.new(0, 5)
+                local itemPadding = Instance.new("UIPadding", itemFrame); itemPadding.PaddingLeft = UDim.new(0, 5)
+
+                local nameButton = Instance.new("TextButton"); nameButton.Size = UDim2.new(1, -55, 1, 0); nameButton.BackgroundTransparency = 1; nameButton.Font = isSelected and Enum.Font.SourceSansBold or Enum.Font.SourceSans; nameButton.Text = recName; nameButton.TextColor3 = isSelected and Color3.fromRGB(0, 200, 255) or Color3.fromRGB(220, 220, 220); nameButton.TextSize = 12; nameButton.TextXAlignment = Enum.TextXAlignment.Left; nameButton.Parent = itemFrame
+                
                 local renameButton = Instance.new("TextButton"); renameButton.Size = UDim2.new(0, 20, 0, 18); renameButton.BackgroundColor3 = Color3.fromRGB(50, 150, 200); renameButton.Font = Enum.Font.SourceSansBold; renameButton.Text = "✏️"; renameButton.TextColor3 = Color3.fromRGB(255, 255, 255); renameButton.TextSize = 12; renameButton.Parent = itemFrame
                 local renameCorner = Instance.new("UICorner", renameButton); renameCorner.CornerRadius = UDim.new(0, 4)
+                
                 local deleteButton = Instance.new("TextButton"); deleteButton.Size = UDim2.new(0, 20, 0, 18); deleteButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50); deleteButton.Font = Enum.Font.SourceSansBold; deleteButton.Text = "🗑️"; deleteButton.TextColor3 = Color3.fromRGB(255, 255, 255); deleteButton.TextSize = 12; deleteButton.Parent = itemFrame
                 local deleteCorner = Instance.new("UICorner", deleteButton); deleteCorner.CornerRadius = UDim.new(0, 4)
-                nameButton.MouseButton1Click:Connect(function() loadedRecordingName = recName; recStatusLabel.Text = "Memuat: " .. recName; updateRecordingsList() end)
+
+                local function toggleSelection()
+                    selectedRecordings[recName] = not selectedRecordings[recName]
+                    updateRecordingsList()
+                end
+
+                nameButton.MouseButton1Click:Connect(toggleSelection)
+
                 renameButton.MouseButton1Click:Connect(function()
                     showRenamePrompt(recName, function(newName)
                         if newName and newName ~= "" and not savedRecordings[newName] then
                             savedRecordings[newName] = savedRecordings[recName]; savedRecordings[recName] = nil
-                            if loadedRecordingName == recName then loadedRecordingName = newName end
+                            if selectedRecordings[recName] then
+                                selectedRecordings[recName] = nil
+                                selectedRecordings[newName] = true
+                            end
+                            saveRecordingsData()
                             recStatusLabel.Text = "Nama diubah menjadi " .. newName; updateRecordingsList()
                         else
                             recStatusLabel.Text = "Nama tidak valid atau sudah ada."
                         end
                     end)
                 end)
-                deleteButton.MouseButton1Click:Connect(function() savedRecordings[recName] = nil; if loadedRecordingName == recName then loadedRecordingName = nil end; recStatusLabel.Text = "Menghapus: " .. recName; updateRecordingsList() end)
+                deleteButton.MouseButton1Click:Connect(function() 
+                    savedRecordings[recName] = nil
+                    selectedRecordings[recName] = nil
+                    saveRecordingsData()
+                    recStatusLabel.Text = "Menghapus: " .. recName
+                    updateRecordingsList() 
+                end)
             end
+            recordingsListFrame.CanvasPosition = scrollPos
         end
     
         startRecording = function()
@@ -3241,7 +3294,7 @@ task.spawn(function()
             playButton.Visible = false
 
             local lastPosition = hrp.Position
-            local TELEPORT_THRESHOLD = 50 -- Jarak dalam stud untuk dianggap teleport
+            local TELEPORT_THRESHOLD = 50 
 
             recordingConnection = RunService.Heartbeat:Connect(function()
                 if not isRecording then return end
@@ -3252,7 +3305,7 @@ task.spawn(function()
                 
                 local frameData = {
                     time = tick() - startTime,
-                    cframe = currentCFrame,
+                    cframe = {currentCFrame:GetComponents()},
                     anims = {}
                 }
 
@@ -3269,8 +3322,6 @@ task.spawn(function()
             end)
         end
     
-        local playbackMovers = {}
-    
         stopActions = function()
             if isRecording then
                 isRecording = false
@@ -3280,6 +3331,7 @@ task.spawn(function()
                     local newName, i = "Rekaman 1", 1
                     while savedRecordings[newName] do i += 1; newName = "Rekaman " .. i end
                     savedRecordings[newName] = currentRecordingData
+                    saveRecordingsData()
                     recStatusLabel.Text = "Rekaman disimpan sebagai: " .. newName
                     updateRecordingsList()
                 else
@@ -3300,25 +3352,22 @@ task.spawn(function()
     
             if isPlaying then
                 isPlaying = false
-                if playbackConnection then playbackConnection:Disconnect(); playbackConnection = nil end
-                
-                for id, track in pairs(animationCache) do
-                    if track and pcall(function() return track.IsPlaying end) then
-                        track:Stop(0.1)
-                    end
+                if playbackConnection then
+                    playbackConnection:Disconnect()
+                    playbackConnection = nil
                 end
-                animationCache = {}
-    
-                if playbackMovers.attachment then pcall(function() playbackMovers.attachment:Destroy() end) end
-                if playbackMovers.alignPos then pcall(function() playbackMovers.alignPos:Destroy() end) end
-                if playbackMovers.alignOrient then pcall(function() playbackMovers.alignOrient:Destroy() end) end
-                playbackMovers = {}
-    
+
                 local char = LocalPlayer.Character
-                local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-                if humanoid then
-                    humanoid.PlatformStand = false
-                    humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+                if char then
+                    local hrp = char:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        local attachment = hrp:FindFirstChild("ReplayAttachment")
+                        if attachment then attachment:Destroy() end
+                    end
+                    local humanoid = char:FindFirstChildOfClass("Humanoid")
+                    if humanoid then
+                        humanoid.PlatformStand = false
+                    end
                 end
     
                 playButton.Text = "▶️"
@@ -3328,96 +3377,62 @@ task.spawn(function()
                 recStatusLabel.Text = "Pemutaran ulang dihentikan."
             end
         end
-        
-        playRecording = function(replayCountBox)
-            if isPlaying then return end
-            if isRecording then recStatusLabel.Text = "Hentikan perekaman terlebih dahulu."; return end
-            if not loadedRecordingName or not savedRecordings[loadedRecordingName] then recStatusLabel.Text = "Pilih rekaman untuk diputar."; return end
-            
+
+        playSingleRecording = function(recordingData)
             local char = LocalPlayer.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-            if not (hrp and humanoid) then recStatusLabel.Text = "Karakter/Humanoid tidak ditemukan."; return end
-            
-            local recording = savedRecordings[loadedRecordingName]
-            if #recording < 2 then recStatusLabel.Text = "Rekaman tidak valid."; return end
-            
-            local countText = replayCountBox.Text
-            local replayCount = tonumber(countText)
-            if countText == "" or countText == "0" then replayCount = math.huge elseif not replayCount or replayCount < 1 then replayCount = 1 end
-            
-            isPlaying = true
+            if not (hrp and humanoid) then return end
+
+            local recordingDuration = recordingData[#recordingData].time
+            if recordingDuration <= 0 then return end
+
             humanoid.PlatformStand = true
-    
-            playButton.Text = "⏸️"
-            playButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-            recordButton.Visible = false
-    
-            local attachment = Instance.new("Attachment", hrp)
-            attachment.Name = "ReplayAttachment"
-            local alignPos = Instance.new("AlignPosition", hrp)
-            alignPos.Attachment0 = attachment
-            alignPos.Mode = Enum.PositionAlignmentMode.OneAttachment
-            alignPos.Responsiveness = 200
-            alignPos.MaxForce = 100000
-            local alignOrient = Instance.new("AlignOrientation", hrp)
-            alignOrient.Attachment0 = attachment
-            alignOrient.Mode = Enum.OrientationAlignmentMode.OneAttachment
-            alignOrient.Responsiveness = 200
-            alignOrient.MaxTorque = 100000
-            playbackMovers = {attachment = attachment, alignPos = alignPos, alignOrient = alignOrient}
-    
-            animationCache = {}
-            local currentLoop = 1
+
+            local animationCache = {}
+            local playbackMovers = {}
+            pcall(function()
+                local attachment = Instance.new("Attachment", hrp); attachment.Name = "ReplayAttachment"
+                local alignPos = Instance.new("AlignPosition", hrp); alignPos.Attachment0 = attachment; alignPos.Mode = Enum.PositionAlignmentMode.OneAttachment; alignPos.Responsiveness = 200; alignPos.MaxForce = 100000
+                local alignOrient = Instance.new("AlignOrientation", hrp); alignOrient.Attachment0 = attachment; alignOrient.Mode = Enum.OrientationAlignmentMode.OneAttachment; alignOrient.Responsiveness = 200; alignOrient.MaxTorque = 100000
+                playbackMovers = {attachment = attachment, alignPos = alignPos, alignOrient = alignOrient}
+            end)
+
             local loopStartTime = tick()
-            local recordingDuration = recording[#recording].time
             local lastFrameIndex = 1
             
-            recStatusLabel.Text = string.format("Memutar: %s (1/%s)", loadedRecordingName, tostring(replayCount) == "inf" and "∞" or tostring(replayCount))
-    
             playbackConnection = RunService.Heartbeat:Connect(function()
                 if not isPlaying then
                     if playbackConnection then playbackConnection:Disconnect(); playbackConnection = nil end
                     return 
                 end
-    
+
                 local elapsedTime = tick() - loopStartTime
-                if elapsedTime > recordingDuration then
-                    currentLoop = currentLoop + 1
-                    if currentLoop > replayCount then
-                        stopActions()
-                        recStatusLabel.Text = "Pemutaran selesai."
-                        return
-                    end
-                    loopStartTime = tick()
-                    elapsedTime = 0
-                    lastFrameIndex = 1
-                    recStatusLabel.Text = string.format("Memutar: %s (%d/%s)", loadedRecordingName, currentLoop, tostring(replayCount) == "inf" and "∞" or tostring(replayCount))
-                end
-    
-                local frameToPlay
-                for i = lastFrameIndex, #recording do
-                    if recording[i].time >= elapsedTime then
-                        frameToPlay = recording[i]
+                
+                local frameToPlay, currentFrame
+                for i = lastFrameIndex, #recordingData do
+                    if recordingData[i].time >= elapsedTime then
+                        frameToPlay = recordingData[i]
+                        currentFrame = recordingData[i-1] or recordingData[1]
                         lastFrameIndex = i
                         break
                     end
                 end
                 
-                if not frameToPlay then return end
+                if not frameToPlay or not playbackMovers.alignPos then return end
 
-                local currentFrame = recording[lastFrameIndex - 1] or recording[1]
+                local cframeToPlay = CFrame.new(unpack(frameToPlay.cframe))
+                local cframeCurrent = CFrame.new(unpack(currentFrame.cframe))
 
                 if frameToPlay.isTeleport then
-                    hrp.CFrame = frameToPlay.cframe
-                    playbackMovers.alignPos.Position = frameToPlay.cframe.Position
-                    playbackMovers.alignOrient.CFrame = frameToPlay.cframe
+                    hrp.CFrame = cframeToPlay
+                    playbackMovers.alignPos.Position = cframeToPlay.Position
+                    playbackMovers.alignOrient.CFrame = cframeToPlay
                     loopStartTime = tick() - frameToPlay.time
                 else
                     local alpha = (elapsedTime - currentFrame.time) / (frameToPlay.time - currentFrame.time)
                     alpha = math.clamp(alpha, 0, 1)
-                    local interpolatedCFrame = currentFrame.cframe:Lerp(frameToPlay.cframe, alpha)
-                    
+                    local interpolatedCFrame = cframeCurrent:Lerp(cframeToPlay, alpha)
                     playbackMovers.alignPos.Position = interpolatedCFrame.Position
                     playbackMovers.alignOrient.CFrame = interpolatedCFrame
                 end
@@ -3427,8 +3442,7 @@ task.spawn(function()
                 for _, animData in ipairs(animFrame.anims) do
                     requiredAnims[animData.id] = animData.time
                     if not animationCache[animData.id] then
-                        local anim = Instance.new("Animation")
-                        anim.AnimationId = animData.id
+                        local anim = Instance.new("Animation"); anim.AnimationId = animData.id
                         animationCache[animData.id] = humanoid:LoadAnimation(anim)
                     end
                     local track = animationCache[animData.id]
@@ -3437,9 +3451,66 @@ task.spawn(function()
                     track.TimePosition = animData.time
                 end
                 for id, track in pairs(animationCache) do
-                    if not requiredAnims[id] and track.IsPlaying then
-                        track:Stop(0.1)
+                    if not requiredAnims[id] and track.IsPlaying then track:Stop(0.1) end
+                end
+            end)
+
+            task.wait(recordingDuration)
+
+            if playbackConnection then playbackConnection:Disconnect(); playbackConnection = nil end
+            if playbackMovers.attachment and playbackMovers.attachment.Parent then playbackMovers.attachment:Destroy() end
+            for _, track in pairs(animationCache) do if track then pcall(track.Stop, track, 0) end end
+        end
+
+        playSequence = function(replayCountBox)
+            if isPlaying then return end
+            if isRecording then recStatusLabel.Text = "Hentikan perekaman terlebih dahulu."; return end
+
+            local sortedNames = {}
+            for name in pairs(savedRecordings) do table.insert(sortedNames, name) end
+            table.sort(sortedNames)
+
+            local sequenceToPlay = {}
+            for _, recName in ipairs(sortedNames) do
+                if selectedRecordings[recName] then
+                    table.insert(sequenceToPlay, recName)
+                end
+            end
+
+            if #sequenceToPlay == 0 then
+                recStatusLabel.Text = "Pilih rekaman untuk diputar."
+                return
+            end
+
+            local countText = replayCountBox.Text
+            local replayCount = tonumber(countText)
+            if countText == "" or countText == "0" then replayCount = math.huge elseif not replayCount or replayCount < 1 then replayCount = 1 end
+            
+            isPlaying = true
+            playButton.Text = "⏸️"
+            playButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+            recordButton.Visible = false
+            
+            task.spawn(function()
+                for i = 1, replayCount do
+                    if not isPlaying then break end
+                    recStatusLabel.Text = string.format("Memutar sekuens: %d/%s", i, tostring(replayCount) == "inf" and "∞" or tostring(replayCount))
+                    
+                    for j, recName in ipairs(sequenceToPlay) do
+                        if not isPlaying then break end
+                        recStatusLabel.Text = string.format("Memutar: %s (%d/%d)", recName, j, #sequenceToPlay)
+                        
+                        local recordingData = savedRecordings[recName]
+                        if recordingData then
+                            playSingleRecording(recordingData)
+                        end
+                        task.wait(0.1) -- Small delay between recordings
                     end
+                end
+
+                if isPlaying then
+                    stopActions()
+                    recStatusLabel.Text = "Pemutaran sekuens selesai."
                 end
             end)
         end
@@ -3472,10 +3543,25 @@ task.spawn(function()
             return btn
         end
     
+        -- Tombol bawah (Impor, Rekam, Ekspor)
         local importButton = createIconButton(controlButtonsFrame, "📥", Color3.fromRGB(50, 150, 200), 24)
         recordButton = createIconButton(controlButtonsFrame, "🔴", Color3.fromRGB(200, 50, 50), 24)
-        playButton = createIconButton(controlButtonsFrame, "▶️", Color3.fromRGB(0, 150, 255), 24)
         local exportButton = createIconButton(controlButtonsFrame, "📤", Color3.fromRGB(50, 150, 200), 24)
+
+        -- Frame baru untuk tombol atas (Putar, Pilih Semua)
+        local topButtonsFrame = Instance.new("Frame", RekamanTabContent)
+        topButtonsFrame.Name = "TopButtonsFrame"
+        topButtonsFrame.Size = UDim2.new(1, 0, 0, 30)
+        topButtonsFrame.BackgroundTransparency = 1
+        topButtonsFrame.LayoutOrder = 3
+        local topButtonsLayout = Instance.new("UIListLayout", topButtonsFrame)
+        topButtonsLayout.FillDirection = Enum.FillDirection.Horizontal
+        topButtonsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        topButtonsLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+        topButtonsLayout.Padding = UDim.new(0, 10)
+
+        local selectAllButton = createIconButton(topButtonsFrame, "☑️", Color3.fromRGB(120, 120, 120), 28)
+        playButton = createIconButton(topButtonsFrame, "▶️", Color3.fromRGB(0, 150, 255), 28)
 
         importButton.MouseButton1Click:Connect(function()
             showImportPrompt(function(text)
@@ -3493,6 +3579,7 @@ task.spawn(function()
                     end
                 end
                 if importedCount > 0 then
+                    saveRecordingsData()
                     updateRecordingsList()
                     showNotification(importedCount .. " rekaman berhasil diimpor!", Color3.fromRGB(50, 200, 50))
                 else
@@ -3501,19 +3588,45 @@ task.spawn(function()
             end)
         end)
 
+        selectAllButton.MouseButton1Click:Connect(function()
+            local totalRecordings = 0
+            local selectedCount = 0
+            for _ in pairs(savedRecordings) do totalRecordings = totalRecordings + 1 end
+            for _, selected in pairs(selectedRecordings) do if selected then selectedCount = selectedCount + 1 end end
+
+            if selectedCount < totalRecordings then
+                -- Select all
+                for recName in pairs(savedRecordings) do
+                    selectedRecordings[recName] = true
+                end
+            else
+                -- Deselect all
+                selectedRecordings = {}
+            end
+            updateRecordingsList()
+        end)
+
         exportButton.MouseButton1Click:Connect(function()
             if not setclipboard then
                 showNotification("Executor tidak mendukung clipboard!", Color3.fromRGB(200, 50, 50))
                 return
             end
-            if not next(savedRecordings) then
-                showNotification("Tidak ada rekaman untuk diekspor.", Color3.fromRGB(200, 150, 50))
+            local toExport = {}
+            local hasSelection = false
+            for name, selected in pairs(selectedRecordings) do
+                if selected then
+                    toExport[name] = savedRecordings[name]
+                    hasSelection = true
+                end
+            end
+            if not hasSelection then
+                showNotification("Pilih rekaman untuk diekspor.", Color3.fromRGB(200, 150, 50))
                 return
             end
             local success, result = pcall(function()
-                local jsonData = HttpService:JSONEncode(savedRecordings)
+                local jsonData = HttpService:JSONEncode(toExport)
                 setclipboard(jsonData)
-                showNotification("Data rekaman disalin ke clipboard!", Color3.fromRGB(50, 200, 50))
+                showNotification(#toExport .. " rekaman terpilih disalin!", Color3.fromRGB(50, 200, 50))
             end)
             if not success then
                 showNotification("Gagal mengekspor data rekaman!", Color3.fromRGB(200, 50, 50))
@@ -3559,12 +3672,12 @@ task.spawn(function()
         recStatusLabel.Text = "Siap."
         recStatusLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
         recStatusLabel.TextSize = 12
-        recStatusLabel.LayoutOrder = 3
+        recStatusLabel.LayoutOrder = 4
         
         recordingsListFrame = Instance.new("ScrollingFrame", RekamanTabContent)
         recordingsListFrame.Name = "RecordingsListFrame"
-        recordingsListFrame.Size = UDim2.new(1, 0, 1, -95)
-        recordingsListFrame.Position = UDim2.new(0,0,0,95)
+        recordingsListFrame.Size = UDim2.new(1, 0, 1, -125)
+        recordingsListFrame.Position = UDim2.new(0,0,0,125)
         recordingsListFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
         recordingsListFrame.BackgroundTransparency = 0.5
         recordingsListFrame.BorderSizePixel = 0
@@ -3595,7 +3708,7 @@ task.spawn(function()
             if isPlaying then
                 stopActions()
             else
-                playRecording(replayCountBox)
+                playSequence(replayCountBox)
             end
         end)
     end
@@ -3758,6 +3871,7 @@ task.spawn(function()
     loadTeleportData()
     loadGuiPositions()
     loadFeatureStates()
+    loadRecordingsData() -- [[ PERUBAHAN BARU ]]
     applyInitialStates()
     switchTab("Player")
     
