@@ -178,6 +178,8 @@ task.spawn(function()
     local isMiniToggleDraggable = true 
     local IsAntiLagEnabled = false 
     local antiLagConnection = nil 
+    local IsShiftLockEnabled = false
+    local shiftLockConnection = nil
     
     -- [[ INVISIBLE GHOST INTEGRATION ]]
     local IsInvisibleGhostEnabled = false
@@ -722,6 +724,7 @@ task.spawn(function()
             AntiLag = IsAntiLagEnabled,
             BoostFPS = IsBoostFPSEnabled,
             InvisibleGhost = IsInvisibleGhostEnabled,
+            ShiftLock = IsShiftLockEnabled,
             -- [[ PERUBAHAN DIMULAI: Simpan status ESP terpisah ]]
             ESPName = IsEspNameEnabled,
             ESPBody = IsEspBodyEnabled,
@@ -752,6 +755,7 @@ task.spawn(function()
                 IsAntiLagEnabled = decodedData.AntiLag or false
                 IsBoostFPSEnabled = decodedData.BoostFPS or false
                 IsInvisibleGhostEnabled = decodedData.InvisibleGhost or false
+                IsShiftLockEnabled = decodedData.ShiftLock or false
                 -- [[ PERUBAHAN DIMULAI: Muat status ESP terpisah ]]
                 IsEspNameEnabled = decodedData.ESPName or false
                 IsEspBodyEnabled = decodedData.ESPBody or false
@@ -2056,6 +2060,41 @@ task.spawn(function()
     end
     -- [[ END INVISIBLE GHOST INTEGRATION ]]
 
+    local function UpdateShiftLock()
+        if not IsShiftLockEnabled then return end
+        local character = LocalPlayer.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+
+        if not (humanoid and rootPart and humanoid.Health > 0) then return end
+
+        humanoid.AutoRotate = false
+        local cameraLookVector = Workspace.CurrentCamera.CFrame.LookVector
+        local lookAtPosition = rootPart.Position + Vector3.new(cameraLookVector.X, 0, cameraLookVector.Z)
+        rootPart.CFrame = CFrame.new(rootPart.Position, lookAtPosition)
+    end
+
+    local function ToggleShiftLock(enabled)
+        IsShiftLockEnabled = enabled
+        saveFeatureStates()
+
+        local character = LocalPlayer.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+        if enabled then
+            if humanoid then humanoid.AutoRotate = false end
+            if not shiftLockConnection then
+                shiftLockConnection = RunService.RenderStepped:Connect(UpdateShiftLock)
+            end
+        else
+            if humanoid then humanoid.AutoRotate = true end
+            if shiftLockConnection then
+                shiftLockConnection:Disconnect()
+                shiftLockConnection = nil
+            end
+        end
+    end
+
     local function ToggleAntiFling(enabled)
         antifling_enabled = enabled; saveFeatureStates(); if enabled and not antifling_connection then antifling_connection = RunService.Heartbeat:Connect(protect_character) elseif not enabled and antifling_connection then antifling_connection:Disconnect(); antifling_connection = nil end
     end
@@ -2797,6 +2836,7 @@ task.spawn(function()
         -- [[ PERUBAHAN DIMULAI: Matikan ESP baru saat skrip ditutup ]]
         if IsEspNameEnabled then ToggleESPName(false) end
         if IsEspBodyEnabled then ToggleESPBody(false) end
+        if IsShiftLockEnabled then ToggleShiftLock(false) end
         -- [[ PERUBAHAN SELESAI ]]
     end
 
@@ -3130,10 +3170,11 @@ task.spawn(function()
         createButton(SettingsTabContent, "Hop Server", function() HopServer() end).LayoutOrder = 6
         createToggle(SettingsTabContent, "Anti-Lag", IsAntiLagEnabled, ToggleAntiLag).LayoutOrder = 7
         createToggle(SettingsTabContent, "Boost FPS", IsBoostFPSEnabled, ToggleBoostFPS).LayoutOrder = 8
-        createButton(SettingsTabContent, "Tutup", CloseScript).LayoutOrder = 9
+        createToggle(SettingsTabContent, "Shift Lock", IsShiftLockEnabled, ToggleShiftLock).LayoutOrder = 9
+        createButton(SettingsTabContent, "Tutup", CloseScript).LayoutOrder = 10
     
         local logoutButton = createButton(SettingsTabContent, "Logout", HandleLogout)
-        logoutButton.LayoutOrder = 10
+        logoutButton.LayoutOrder = 11
         logoutButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
     end
 
@@ -3806,6 +3847,10 @@ task.spawn(function()
             else
                 StartFly()
             end
+        end
+
+        if IsShiftLockEnabled then
+            ToggleShiftLock(true)
         end
 
         applyAllAnimations(character)
