@@ -805,15 +805,15 @@ task.spawn(function()
         end
     end
 
-    local function showRenamePrompt(locationIndex, callback)
-        local oldName = savedTeleportLocations[locationIndex].Name
+    local function showGenericRenamePrompt(oldName, callback)
         local promptFrame = Instance.new("Frame"); promptFrame.Size = UDim2.new(0, 200, 0, 100); promptFrame.Position = UDim2.new(0.5, -100, 0.5, -50); promptFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30); promptFrame.BorderSizePixel = 0; promptFrame.ZIndex = 10; promptFrame.Parent = MainFrame
         local corner = Instance.new("UICorner", promptFrame); corner.CornerRadius = UDim.new(0, 8); local stroke = Instance.new("UIStroke", promptFrame); stroke.Color = Color3.fromRGB(0, 150, 255); stroke.Thickness = 1
-        local title = Instance.new("TextLabel", promptFrame); title.Size = UDim2.new(1, 0, 0, 20); title.Text = "Ganti Nama Lokasi"; title.TextColor3 = Color3.fromRGB(255, 255, 255); title.BackgroundTransparency = 1; title.Font = Enum.Font.SourceSansBold
+        local title = Instance.new("TextLabel", promptFrame); title.Size = UDim2.new(1, 0, 0, 20); title.Text = "Ganti Nama"; title.TextColor3 = Color3.fromRGB(255, 255, 255); title.BackgroundTransparency = 1; title.Font = Enum.Font.SourceSansBold
         local textBox = Instance.new("TextBox", promptFrame); textBox.Size = UDim2.new(1, -20, 0, 30); textBox.Position = UDim2.new(0.5, -90, 0, 30); textBox.Text = oldName; textBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50); textBox.TextColor3 = Color3.fromRGB(255, 255, 255); textBox.ClearTextOnFocus = false; local tbCorner = Instance.new("UICorner", textBox); tbCorner.CornerRadius = UDim.new(0, 5)
         local okButton = createButton(promptFrame, "OK", function() callback(textBox.Text); promptFrame:Destroy() end); okButton.Size = UDim2.new(0.5, -10, 0, 25); okButton.Position = UDim2.new(0, 5, 1, -30)
         local cancelButton = createButton(promptFrame, "Batal", function() promptFrame:Destroy() end); cancelButton.Size = UDim2.new(0.5, -10, 0, 25); cancelButton.Position = UDim2.new(0.5, 5, 1, -30); cancelButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
     end
+
     
     local function showImportPrompt(callback)
         local promptFrame = Instance.new("Frame"); promptFrame.Size = UDim2.new(0, 220, 0, 150); promptFrame.Position = UDim2.new(0.5, -110, 0.5, -75); promptFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30); promptFrame.BorderSizePixel = 0; promptFrame.ZIndex = 10; promptFrame.Parent = MainFrame
@@ -909,7 +909,7 @@ task.spawn(function()
     
             -- Tombol Rename (R)
             local renameButton = createButton(actionsFrame, "R", function() 
-                showRenamePrompt(i, function(newName) 
+                showGenericRenamePrompt(locData.Name, function(newName) 
                     if newName and newName ~= "" and newName ~= savedTeleportLocations[i].Name then 
                         savedTeleportLocations[i].Name = newName
                         table.sort(savedTeleportLocations, naturalCompare)
@@ -3214,7 +3214,7 @@ task.spawn(function()
 
         -- [[ PERUBAHAN BESAR: Variabel untuk multi-pilih dan sekuensial ]]
         local recStatusLabel, recordingsListFrame, recordButton, playButton
-        local updateRecordingsList, startRecording, stopActions, playSequence, playSingleRecording
+        local startRecording, stopActions, playSequence, playSingleRecording
         local selectedRecordings = {}
         local playbackConnection = nil
     
@@ -3254,7 +3254,7 @@ task.spawn(function()
                 nameButton.MouseButton1Click:Connect(toggleSelection)
 
                 renameButton.MouseButton1Click:Connect(function()
-                    showRenamePrompt(recName, function(newName)
+                    showGenericRenamePrompt(recName, function(newName)
                         if newName and newName ~= "" and not savedRecordings[newName] then
                             savedRecordings[newName] = savedRecordings[recName]; savedRecordings[recName] = nil
                             if selectedRecordings[recName] then
@@ -3564,28 +3564,40 @@ task.spawn(function()
         playButton = createIconButton(topButtonsFrame, "▶️", Color3.fromRGB(0, 150, 255), 28)
 
         importButton.MouseButton1Click:Connect(function()
-            showImportPrompt(function(text)
-                if not text or text == "" then return end
-                local success, decodedData = pcall(HttpService.JSONDecode, HttpService, text)
-                if not success or type(decodedData) ~= "table" then
-                    showNotification("Data impor rekaman tidak valid!", Color3.fromRGB(200, 50, 50))
-                    return
+            local RECORDING_IMPORT_FILE = SAVE_FOLDER .. "/ArexansTools_Recordings_Import.json"
+            if not isfile or not isfile(RECORDING_IMPORT_FILE) then
+                showNotification("File 'ArexansTools_Recordings_Import.json' tidak ditemukan di folder ArexansTools.", Color3.fromRGB(200, 150, 50))
+                return
+            end
+
+            local success, content = pcall(readfile, RECORDING_IMPORT_FILE)
+            if not success or not content then
+                showNotification("Gagal membaca file impor.", Color3.fromRGB(200, 50, 50))
+                return
+            end
+
+            local success, decodedData = pcall(HttpService.JSONDecode, HttpService, content)
+            if not success or type(decodedData) ~= "table" then
+                showNotification("Data impor rekaman tidak valid!", Color3.fromRGB(200, 50, 50))
+                return
+            end
+
+            local importedCount = 0
+            for recName, recData in pairs(decodedData) do
+                if not savedRecordings[recName] and type(recData) == "table" then
+                    savedRecordings[recName] = recData
+                    importedCount = importedCount + 1
                 end
-                local importedCount = 0
-                for recName, recData in pairs(decodedData) do
-                    if not savedRecordings[recName] and type(recData) == "table" then
-                        savedRecordings[recName] = recData
-                        importedCount = importedCount + 1
-                    end
-                end
-                if importedCount > 0 then
-                    saveRecordingsData()
-                    updateRecordingsList()
-                    showNotification(importedCount .. " rekaman berhasil diimpor!", Color3.fromRGB(50, 200, 50))
-                else
-                    showNotification("Tidak ada rekaman baru untuk diimpor.", Color3.fromRGB(200, 150, 50))
-                end
-            end)
+            end
+
+            if importedCount > 0 then
+                saveRecordingsData()
+                updateRecordingsList()
+                showNotification(importedCount .. " rekaman berhasil diimpor!", Color3.fromRGB(50, 200, 50))
+                pcall(renamefile, RECORDING_IMPORT_FILE, RECORDING_IMPORT_FILE:gsub(".json", "_imported_" .. os.time() .. ".json"))
+            else
+                showNotification("Tidak ada rekaman baru untuk diimpor.", Color3.fromRGB(200, 150, 50))
+            end
         end)
 
         selectAllButton.MouseButton1Click:Connect(function()
@@ -3607,29 +3619,39 @@ task.spawn(function()
         end)
 
         exportButton.MouseButton1Click:Connect(function()
-            if not setclipboard then
-                showNotification("Executor tidak mendukung clipboard!", Color3.fromRGB(200, 50, 50))
+            if not writefile then
+                showNotification("Executor tidak mendukung penyimpanan file!", Color3.fromRGB(200, 50, 50))
                 return
             end
+
             local toExport = {}
-            local hasSelection = false
+            local selectionCount = 0
             for name, selected in pairs(selectedRecordings) do
                 if selected then
                     toExport[name] = savedRecordings[name]
-                    hasSelection = true
+                    selectionCount = selectionCount + 1
                 end
             end
-            if not hasSelection then
+
+            if selectionCount == 0 then
                 showNotification("Pilih rekaman untuk diekspor.", Color3.fromRGB(200, 150, 50))
                 return
             end
-            local success, result = pcall(function()
-                local jsonData = HttpService:JSONEncode(toExport)
-                setclipboard(jsonData)
-                showNotification(#toExport .. " rekaman terpilih disalin!", Color3.fromRGB(50, 200, 50))
-            end)
+
+            local success, jsonData = pcall(HttpService.JSONEncode, HttpService, toExport)
             if not success then
+                showNotification("Gagal meng-encode data rekaman!", Color3.fromRGB(200, 50, 50))
+                return
+            end
+            
+            local RECORDING_EXPORT_FILE = SAVE_FOLDER .. "/ArexansTools_Recordings_Export.json"
+            local writeSuccess, writeError = pcall(writefile, RECORDING_EXPORT_FILE, jsonData)
+            
+            if writeSuccess then
+                showNotification(selectionCount .. " rekaman diekspor ke " .. RECORDING_EXPORT_FILE, Color3.fromRGB(50, 200, 50))
+            else
                 showNotification("Gagal mengekspor data rekaman!", Color3.fromRGB(200, 50, 50))
+                warn("Export Error:", writeError)
             end
         end)
         
