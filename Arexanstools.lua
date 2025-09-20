@@ -102,7 +102,7 @@ task.spawn(function()
     local GUI_POSITIONS_SAVE_FILE = SAVE_FOLDER .. "/ArexansTools_GuiPositions_" .. tostring(game.PlaceId) .. ".json"
     local FEATURE_STATES_SAVE_FILE = SAVE_FOLDER .. "/ArexansTools_FeatureStates_" .. tostring(game.PlaceId) .. ".json"
     local ANIMATION_SAVE_FILE = SAVE_FOLDER .. "/ArexansTools_Animations.json"
-    local RECORDING_SAVE_FILE = SAVE_FOLDER .. "/ArexansTools_Recordings.json" -- [[ PERUBAHAN BARU ]]
+    local RECORDING_SAVE_FILE = SAVE_FOLDER .. "/ArexansTools_Recordings_" .. tostring(game.PlaceId) .. ".json" -- [[ PERUBAHAN BARU ]]
     local SESSION_SAVE_FILE = SAVE_FOLDER .. "/ArexansTools_Session.json"
 
     -- [[ PERUBAHAN BARU: Fungsi untuk mengelola sesi login dipindahkan ke lingkup luar ]]
