@@ -158,13 +158,6 @@ task.spawn(function()
         WalkSpeed = 16,
         MaxFlySpeed = 10,
         MaxWalkSpeed = 500,
-        KillAuraRadius = 25,
-        KillAuraDamage = 10,
-        MaxKillAuraRadius = 100,
-        MaxKillAuraDamage = 100,
-        AimbotFOV = 90,
-        AimbotPart = "Head",
-        MaxAimbotFOV = 200,
         TeleportDistance = 100,
     }
     
@@ -172,16 +165,10 @@ task.spawn(function()
     local IsFlying = false
     local IsNoclipEnabled = false
     local IsGodModeEnabled = false 
-    local IsKillAuraEnabled = false
-    local IsAimbotEnabled = false
     local IsWalkSpeedEnabled = false
     local OriginalWalkSpeed = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") and LocalPlayer.Character:FindFirstChildOfClass("Humanoid").WalkSpeed or 16
     local FlyConnections = {}
     local godModeConnection = nil 
-    local KillAuraConnection = nil
-    local AimbotConnection = nil
-    local AimbotTarget = nil
-    local FOVPart = nil
     local IsInfinityJumpEnabled = false
     local infinityJumpConnection = nil
     local PlayerButtons = {} -- Cache untuk elemen UI pemain
@@ -470,18 +457,6 @@ task.spawn(function()
     GeneralTabContent.ScrollingDirection = Enum.ScrollingDirection.Y
     GeneralTabContent.Parent = ContentFrame
     
-    local CombatTabContent = Instance.new("ScrollingFrame")
-    CombatTabContent.Name = "CombatTab"
-    CombatTabContent.Size = UDim2.new(1, -10, 1, -10)
-    CombatTabContent.Position = UDim2.new(0, 5, 0, 5)
-    CombatTabContent.BackgroundTransparency = 1
-    CombatTabContent.Visible = false
-    CombatTabContent.CanvasSize = UDim2.new(0, 0, 0, 0)
-    CombatTabContent.ScrollBarThickness = 10
-    CombatTabContent.VerticalScrollBarInset = Enum.ScrollBarInset.Always
-    CombatTabContent.ScrollingDirection = Enum.ScrollingDirection.Y
-    CombatTabContent.Parent = ContentFrame
-    
     local TeleportTabContent = Instance.new("ScrollingFrame")
     TeleportTabContent.Name = "TeleportTab"
     TeleportTabContent.Size = UDim2.new(1, -10, 1, -10)
@@ -541,9 +516,6 @@ task.spawn(function()
     GeneralListLayout.Padding = UDim.new(0, 5)
     GeneralListLayout.Parent = GeneralTabContent
     
-    local CombatListLayout = Instance.new("UIListLayout")
-    CombatListLayout.Padding = UDim.new(0, 5)
-    CombatListLayout.Parent = CombatTabContent
     
     local TeleportListLayout = Instance.new("UIListLayout")
     TeleportListLayout.Padding = UDim.new(0, 2)
@@ -572,7 +544,6 @@ task.spawn(function()
     
     setupCanvasSize(PlayerListLayout, PlayerListContainer)
     setupCanvasSize(GeneralListLayout, GeneralTabContent)
-    setupCanvasSize(CombatListLayout, CombatTabContent)
     setupCanvasSize(TeleportListLayout, TeleportTabContent)
     setupCanvasSize(VipListLayout, VipTabContent)
     setupCanvasSize(SettingsListLayout, SettingsTabContent)
@@ -749,8 +720,6 @@ task.spawn(function()
             GodMode = IsGodModeEnabled,
             AntiFling = antifling_enabled,
             AntiLag = IsAntiLagEnabled,
-            KillAura = IsKillAuraEnabled,
-            Aimbot = IsAimbotEnabled,
             BoostFPS = IsBoostFPSEnabled,
             InvisibleGhost = IsInvisibleGhostEnabled,
             -- [[ PERUBAHAN DIMULAI: Simpan status ESP terpisah ]]
@@ -758,10 +727,7 @@ task.spawn(function()
             ESPBody = IsEspBodyEnabled,
             -- [[ PERUBAHAN SELESAI ]]
             WalkSpeedValue = Settings.WalkSpeed,
-            FlySpeedValue = Settings.FlySpeed,
-            KillAuraRadiusValue = Settings.KillAuraRadius,
-            KillAuraDamageValue = Settings.KillAuraDamage,
-            AimbotFOVValue = Settings.AimbotFOV
+            FlySpeedValue = Settings.FlySpeed
         }
         
         pcall(function()
@@ -784,8 +750,6 @@ task.spawn(function()
                 IsGodModeEnabled = decodedData.GodMode or false
                 antifling_enabled = decodedData.AntiFling or false
                 IsAntiLagEnabled = decodedData.AntiLag or false
-                IsKillAuraEnabled = decodedData.KillAura or false
-                IsAimbotEnabled = decodedData.Aimbot or false
                 IsBoostFPSEnabled = decodedData.BoostFPS or false
                 IsInvisibleGhostEnabled = decodedData.InvisibleGhost or false
                 -- [[ PERUBAHAN DIMULAI: Muat status ESP terpisah ]]
@@ -795,9 +759,6 @@ task.spawn(function()
                 
                 Settings.WalkSpeed = decodedData.WalkSpeedValue or 16
                 Settings.FlySpeed = decodedData.FlySpeedValue or 1
-                Settings.KillAuraRadius = decodedData.KillAuraRadiusValue or 25
-                Settings.KillAuraDamage = decodedData.KillAuraDamageValue or 10
-                Settings.AimbotFOV = decodedData.AimbotFOVValue or 90
             end
         end)
         if not success then
@@ -978,7 +939,7 @@ task.spawn(function()
     end
     
     local function switchTab(tabName)
-        PlayerTabContent.Visible = (tabName == "Player"); GeneralTabContent.Visible = (tabName == "Umum"); CombatTabContent.Visible = (tabName == "Tempur"); TeleportTabContent.Visible = (tabName == "Teleport"); VipTabContent.Visible = (tabName == "VIP"); SettingsTabContent.Visible = (tabName == "Pengaturan"); RekamanTabContent.Visible = (tabName == "Rekaman")
+        PlayerTabContent.Visible = (tabName == "Player"); GeneralTabContent.Visible = (tabName == "Umum"); TeleportTabContent.Visible = (tabName == "Teleport"); VipTabContent.Visible = (tabName == "VIP"); SettingsTabContent.Visible = (tabName == "Pengaturan"); RekamanTabContent.Visible = (tabName == "Rekaman")
         if tabName == "Player" and updatePlayerList then updatePlayerList() end
     end
     
@@ -988,23 +949,11 @@ task.spawn(function()
     
     local PlayerTabButton = createTabButton("Player", TabsFrame)
     local GeneralTabButton = createTabButton("Umum", TabsFrame)
-    local CombatTabButton = createTabButton("Tempur", TabsFrame)
     local TeleportTabButton = createTabButton("Teleport", TabsFrame)
     local RekamanTabButton = createTabButton("Rekaman", TabsFrame)
     local VipTabButton = createTabButton("VIP", TabsFrame)
     local SettingsTabButton = createTabButton("Pengaturan", TabsFrame)
     
-    local function CreateFOVCircle()
-        if FOVPart then FOVPart:Destroy() end
-        FOVPart = Instance.new("Part", Workspace); FOVPart.Name = "AimbotFOV"; FOVPart.Anchored = true; FOVPart.CanCollide = false; FOVPart.Transparency = 1; FOVPart.Size = Vector3.new(0.1, 0.1, 0.1)
-        local billboard = Instance.new("BillboardGui", FOVPart); billboard.Name = "FOVGui"; billboard.Adornee = FOVPart; billboard.Size = UDim2.new(Settings.AimbotFOV * 2 / 50, 0, Settings.AimbotFOV * 2 / 50, 0); billboard.AlwaysOnTop = true
-        local frame = Instance.new("Frame", billboard); frame.Size = UDim2.new(1, 0, 1, 0); frame.BackgroundTransparency = 1; frame.BorderSizePixel = 0
-        local uiStroke = Instance.new("UIStroke", frame); uiStroke.Thickness = 2; uiStroke.Color = Color3.fromRGB(0, 200, 255); uiStroke.Transparency = 0.2
-    end
-    
-    local function UpdateFOVCircle()
-        if FOVPart and FOVPart:FindFirstChild("FOVGui") then FOVPart.FOVGui.Size = UDim2.new(Settings.AimbotFOV * 2 / 50, 0, Settings.AimbotFOV * 2 / 50, 0) end
-    end
 
     -- ====================================================================
     -- == BAGIAN FUNGSI EMOTE ASLI (DIKEMBALIKAN)                      ==
@@ -2041,19 +1990,6 @@ task.spawn(function()
         CloseButton.MouseButton1Click:Connect(function() hiddenfling = false; FlingScreenGui:Destroy(); touchFlingGui = nil end)
     end
     
-    local function ToggleKillAura(enabled)
-        IsKillAuraEnabled = enabled
-        saveFeatureStates()
-        if enabled then KillAuraConnection = RunService.Heartbeat:Connect(function() local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart"); if not root then return end; for _, npc in pairs(Workspace:GetDescendants()) do if npc:IsA("Model") and npc ~= LocalPlayer.Character and npc:FindFirstChildOfClass("Humanoid") and npc:FindFirstChild("HumanoidRootPart") then local humanoid = npc.Humanoid; if humanoid.Health > 0 and (npc.HumanoidRootPart.Position - root.Position).Magnitude <= Settings.KillAuraRadius then humanoid:TakeDamage(Settings.KillAuraDamage) end end end end)
-        elseif KillAuraConnection then KillAuraConnection:Disconnect(); KillAuraConnection = nil end
-    end
-    
-    local function ToggleAimbot(enabled)
-        IsAimbotEnabled = enabled
-        saveFeatureStates()
-        if enabled then CreateFOVCircle(); AimbotConnection = RunService.RenderStepped:Connect(function() local camera = Workspace.CurrentCamera; local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart"); if not (root and camera) then return end; local mousePos = UserInputService:GetMouseLocation(); local closestNPC, closestDistance = nil, Settings.AimbotFOV; for _, npc in pairs(Workspace:GetDescendants()) do if npc:IsA("Model") and npc ~= LocalPlayer.Character and npc:FindFirstChildOfClass("Humanoid") and npc:FindFirstChild(Settings.AimbotPart) then local humanoid = npc.Humanoid; if humanoid.Health > 0 then local screenPos, onScreen = camera:WorldToViewportPoint(npc[Settings.AimbotPart].Position); if onScreen then local distance = (mousePos - Vector2.new(screenPos.X, screenPos.Y)).Magnitude; if distance <= closestDistance then closestDistance, closestNPC = distance, npc end end end end end; AimbotTarget = closestNPC; if AimbotTarget and AimbotTarget:FindFirstChild(Settings.AimbotPart) then camera.CFrame = CFrame.new(camera.CFrame.Position, AimbotTarget[Settings.AimbotPart].Position); AimbotTarget.Humanoid:TakeDamage(Settings.KillAuraDamage) end; if FOVPart then FOVPart.CFrame = CFrame.new(root.Position + Vector3.new(0, 2, 0)); FOVPart.FOVGui.Enabled = true end end)
-        else if AimbotConnection then AimbotConnection:Disconnect(); AimbotConnection = nil end; AimbotTarget = nil; if FOVPart then FOVPart:Destroy(); FOVPart = nil end end
-    end
     
     local function protect_character()
         local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart"); if root and antifling_enabled then if root.Velocity.Magnitude <= antifling_velocity_threshold then antifling_last_safe_cframe = root.CFrame end; if root.Velocity.Magnitude > antifling_velocity_threshold and antifling_last_safe_cframe then root.Velocity, root.AssemblyLinearVelocity, root.AssemblyAngularVelocity, root.CFrame = Vector3.new(), Vector3.new(), Vector3.new(), antifling_last_safe_cframe end; if root.AssemblyAngularVelocity.Magnitude > antifling_angular_threshold then root.AssemblyAngularVelocity = Vector3.new() end; if LocalPlayer.Character.Humanoid:GetState() == Enum.HumanoidStateType.FallingDown then LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end end
@@ -2850,7 +2786,7 @@ task.spawn(function()
 		if isSpectatingLocation then stopLocationSpectate() end
 
         if isRecording or isPlaying then stopActions() end
-        if IsFlying then if UserInputService.TouchEnabled then StopMobileFly() else StopFly() end end; if IsWalkSpeedEnabled then ToggleWalkSpeed(false) end; if IsNoclipEnabled then ToggleNoclip(false) end; if IsGodModeEnabled then ToggleGodMode(false) end; if IsKillAuraEnabled then ToggleKillAura(false) end; if IsAimbotEnabled then ToggleAimbot(false) end; if IsInfinityJumpEnabled then IsInfinityJumpEnabled = false; if infinityJumpConnection then infinityJumpConnection:Disconnect(); infinityJumpConnection = nil end end; if antifling_enabled then ToggleAntiFling(false) end; if IsAntiLagEnabled then ToggleAntiLag(false) end
+        if IsFlying then if UserInputService.TouchEnabled then StopMobileFly() else StopFly() end end; if IsWalkSpeedEnabled then ToggleWalkSpeed(false) end; if IsNoclipEnabled then ToggleNoclip(false) end; if IsGodModeEnabled then ToggleGodMode(false) end; if IsInfinityJumpEnabled then IsInfinityJumpEnabled = false; if infinityJumpConnection then infinityJumpConnection:Disconnect(); infinityJumpConnection = nil end end; if antifling_enabled then ToggleAntiFling(false) end; if IsAntiLagEnabled then ToggleAntiLag(false) end
         if IsBoostFPSEnabled then ToggleBoostFPS(false) end
         if IsInvisibleGhostEnabled then ToggleInvisibleGhost(false) end
         if isEmoteEnabled then destroyEmoteGUI(); EmoteToggleButton.Visible = false end
@@ -3097,14 +3033,6 @@ task.spawn(function()
         createToggle(GeneralTabContent, "Anti-Fling", antifling_enabled, ToggleAntiFling)
     end
 
-    local function setupCombatTab()
-        createSlider(CombatTabContent, "Radius Aura Serang", 0, Settings.MaxKillAuraRadius, Settings.KillAuraRadius, "Studs", 1, function(v) Settings.KillAuraRadius = v end)
-        createSlider(CombatTabContent, "Kerusakan", 0, Settings.MaxKillAuraDamage, Settings.KillAuraDamage, "HP", 1, function(v) Settings.KillAuraDamage = v end)
-        createToggle(CombatTabContent, "Aura Serang", IsKillAuraEnabled, ToggleKillAura)
-        createSlider(CombatTabContent, "FOV Aimbot", 0, Settings.MaxAimbotFOV, Settings.AimbotFOV, "Piksel", 1, function(v) Settings.AimbotFOV = v; UpdateFOVCircle() end)
-        createDropdown(CombatTabContent, "Target Aimbot", {"Head", "HumanoidRootPart", "Torso"}, Settings.AimbotPart, function(v) Settings.AimbotPart = v end)
-        createToggle(CombatTabContent, "Aimbot", IsAimbotEnabled, ToggleAimbot)
-    end
 
     local function setupTeleportTab()
         createButton(TeleportTabContent, "Pindai Ulang Map", function() for _, part in pairs(Workspace:GetDescendants()) do if part:IsA("BasePart") then local nameLower = part.Name:lower(); if (nameLower:find("checkpoint") or nameLower:find("pos") or nameLower:find("finish") or nameLower:find("start")) and not Players:GetPlayerFromCharacter(part.Parent) then addTeleportLocation(part.Name, part.CFrame) end end end end).LayoutOrder = 1
@@ -3737,7 +3665,6 @@ task.spawn(function()
 
     setupPlayerTab()
     setupGeneralTab()
-    setupCombatTab()
     setupTeleportTab()
     setupVipTab()
     setupSettingsTab()
@@ -3749,7 +3676,7 @@ task.spawn(function()
         MiniToggleButton.Text = MainFrame.Visible and "◀" or "▶"
         MiniToggleButton.BackgroundTransparency = MainFrame.Visible and 0.5 or 1
         if MainFrame.Visible then
-            if not (PlayerTabContent.Visible or GeneralTabContent.Visible or CombatTabContent.Visible or TeleportTabContent.Visible or VipTabContent.Visible or SettingsTabContent.Visible or RekamanTabContent.Visible) then
+            if not (PlayerTabContent.Visible or GeneralTabContent.Visible or TeleportTabContent.Visible or VipTabContent.Visible or SettingsTabContent.Visible or RekamanTabContent.Visible) then
                 switchTab("Player")
             else
                 updatePlayerList()
@@ -3824,8 +3751,6 @@ task.spawn(function()
     
     local function applyInitialStates()
         if IsAntiLagEnabled then ToggleAntiLag(true) end
-        if IsKillAuraEnabled then ToggleKillAura(true) end
-        if IsAimbotEnabled then ToggleAimbot(true) end
         if IsBoostFPSEnabled then ToggleBoostFPS(true) end
         if IsInvisibleGhostEnabled then ToggleInvisibleGhost(true) end
         -- [[ PERUBAHAN DIMULAI: Terapkan status ESP terpisah saat dimuat ]]
